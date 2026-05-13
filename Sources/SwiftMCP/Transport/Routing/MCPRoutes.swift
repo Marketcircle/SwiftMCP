@@ -169,9 +169,13 @@ extension HTTPSSETransport {
 			("Content-Type", "text/event-stream"),
 			("Cache-Control", "no-cache"),
 			("Connection", "keep-alive"),
-			("Access-Control-Allow-Methods", "GET"),
-			("Access-Control-Allow-Headers", "Content-Type, Authorization, MCP-Protocol-Version"),
 		]
+
+		if let origin = allowedOrigins?.first, !origin.isEmpty {
+			headers.append(("Access-Control-Allow-Origin", origin))
+			headers.append(("Access-Control-Allow-Methods", "GET"))
+			headers.append(("Access-Control-Allow-Headers", "Content-Type, Authorization, MCP-Protocol-Version"))
+		}
 
 		if !isLegacy {
 			headers.append(("Mcp-Session-Id", sessionID.uuidString))

@@ -61,6 +61,14 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// A function type that handles authorization of requests.
     public typealias AuthorizationHandler = @Sendable (String?) -> AuthorizationResult
 
+    /// Origins allowed in CORS `Access-Control-Allow-Origin` headers.
+    ///
+    /// - `nil` (default): no CORS header is emitted.
+    /// - Empty array: same as `nil`.
+    /// - `["*"]`: wildcard (allows any origin — use only for local development).
+    /// - `["https://example.com"]`: restrict to specific origins.
+    public var allowedOrigins: [String]?
+
     /// Authorization handler for bearer tokens.
     public var authorizationHandler: AuthorizationHandler = { _ in return .authorized }
 
@@ -211,7 +219,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
 
     // MARK: - Initialization
 
-    public init(server: MCPServer, host: String = String.localHostname, port: Int = 8080) {
+    public init(server: MCPServer, host: String = "127.0.0.1", port: Int = 8080) {
         self.server = server
         self.host = host
         self.port = port
@@ -219,7 +227,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     }
 
     public convenience init(server: MCPServer) {
-        self.init(server: server, host: String.localHostname, port: 8080)
+        self.init(server: server, host: "127.0.0.1", port: 8080)
     }
 
     // MARK: - Server Lifecycle

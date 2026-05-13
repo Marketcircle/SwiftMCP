@@ -156,8 +156,9 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
         for (name, value) in response.headers {
             nioHeaders.add(name: name, value: value)
         }
-        if nioHeaders["Access-Control-Allow-Origin"].isEmpty {
-            nioHeaders.add(name: "Access-Control-Allow-Origin", value: "*")
+        if nioHeaders["Access-Control-Allow-Origin"].isEmpty,
+           let origin = transport.allowedOrigins?.first, !origin.isEmpty {
+            nioHeaders.add(name: "Access-Control-Allow-Origin", value: origin)
         }
 
         let status = nioStatus(response.status)
@@ -243,7 +244,9 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
 
     private func sendResponse(channel: Channel, status: HTTPResponseStatus, headers: HTTPHeaders? = nil, body: ByteBuffer? = nil) {
         var responseHeaders = headers ?? HTTPHeaders()
-        responseHeaders.add(name: "Access-Control-Allow-Origin", value: "*")
+        if let origin = transport.allowedOrigins?.first, !origin.isEmpty {
+            responseHeaders.add(name: "Access-Control-Allow-Origin", value: origin)
+        }
 
         if let body = body {
             if responseHeaders["Content-Type"].isEmpty {
