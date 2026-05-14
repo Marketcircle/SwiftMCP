@@ -190,6 +190,18 @@ extension HTTPSSETransport {
 			  let sessionUUID = UUID(uuidString: sessionIDHeader) else {
 			return RouteResponse(status: .badRequest)
 		}
+
+		let token = request.bearerToken
+		let authResult = await authorize(token, sessionID: sessionUUID)
+		switch authResult {
+		case .unauthorized(let message):
+			return RouteResponse(status: .unauthorized, body: Data("Unauthorized: \(message)".utf8))
+		case .jweNotSupported(let message):
+			return RouteResponse(status: .forbidden, body: Data(message.utf8))
+		case .authorized:
+			break
+		}
+
 		await sessionManager.removeSession(id: sessionUUID)
 		return RouteResponse(status: .noContent)
 	}
