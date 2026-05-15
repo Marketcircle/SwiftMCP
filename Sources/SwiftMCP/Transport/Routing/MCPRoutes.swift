@@ -23,8 +23,16 @@ extension HTTPSSETransport {
 	/// Handle POST /mcp — streamable HTTP endpoint.
 	func handleStreamableHTTP(request: HTTPRouteRequest<Data?>) async throws -> RouteResponse {
 
-		// Extract or generate session ID
-		let sessionID = UUID(uuidString: request.sessionID ?? "") ?? UUID()
+		// Validate or generate session ID — reject client-supplied IDs that don't match an existing session
+		let sessionID: UUID
+		if let clientSessionID = request.sessionID, let parsed = UUID(uuidString: clientSessionID) {
+			guard await sessionManager.sessions[parsed] != nil else {
+				return RouteResponse(status: .notFound, body: Data("Unknown session.".utf8))
+			}
+			sessionID = parsed
+		} else {
+			sessionID = UUID()
+		}
 		let sid = sessionID.uuidString
 
 		let baseHeaders: [(String, String)] = [
