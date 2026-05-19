@@ -52,7 +52,7 @@ public enum MCPAppIntentTools {
 
     private static func toolInstances(for providerType: MCPAppShortcutsProvider.Type) -> [any MCPAppIntentTool] {
         var toolsByName: [String: any MCPAppIntentTool] = [:]
-        for shortcut in providerType.appShortcuts {
+        for shortcut in shortcuts(for: providerType) {
             guard let intent = intentInstance(from: shortcut) else { continue }
             guard let tool = intent as? any MCPAppIntentTool else { continue }
             let name = tool.mcpToolMetadata.name
@@ -61,6 +61,14 @@ public enum MCPAppIntentTools {
             }
         }
         return Array(toolsByName.values)
+    }
+
+    private static func shortcuts(for providerType: MCPAppShortcutsProvider.Type) -> [AppShortcut] {
+        if let mcpProviderType = providerType as? MCPAppIntentShortcutsProviding.Type {
+            return mcpProviderType.mcpAppShortcuts
+        }
+
+        return providerType.appShortcuts
     }
 
     private static func intentInstance(from shortcut: AppShortcut) -> (any AppIntent)? {
