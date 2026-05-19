@@ -51,7 +51,7 @@ private struct TestShortcutsProvider: AppShortcutsProvider, MCPAppIntentShortcut
     }
 
     static var mcpAppShortcuts: [AppShortcut] {
-        [
+        var shortcuts: [AppShortcut] = [
             AppShortcut(
                 intent: MCPOnlyShortcutIntent(),
                 phrases: ["Run MCP only shortcut in \(.applicationName)"],
@@ -59,6 +59,16 @@ private struct TestShortcutsProvider: AppShortcutsProvider, MCPAppIntentShortcut
                 systemImageName: "circle"
             ),
         ]
+
+        if includeMCPOnlyShortcut == false {
+            shortcuts = []
+        }
+
+        return shortcuts
+    }
+
+    private static var includeMCPOnlyShortcut: Bool {
+        ProcessInfo.processInfo.environment["SWIFTMCP_INCLUDE_TEST_APP_INTENT_SHORTCUT"] != "0"
     }
 }
 
@@ -72,6 +82,16 @@ struct MCPAppIntentShortcutsProvidingTests {
         let names = metadata.map(\.name)
 
         #expect(names == ["mcpOnlyShortcut"])
+    }
+
+    @Test func mcpSpecificShortcutsSupportRuntimeConditions() {
+        guard #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) else {
+            return
+        }
+
+        let metadata = MCPAppIntentTools.toolMetadata(for: TestShortcutsProvider.self)
+
+        #expect(metadata.map(\.name) == ["mcpOnlyShortcut"])
     }
 }
 #endif
