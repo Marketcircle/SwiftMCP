@@ -27,13 +27,18 @@ public struct MCPAppIntentToolMacro: MemberMacro, ExtensionMacro {
 
         let documentation = Documentation(from: declaration.leadingTrivia.description)
 
+        var titleOverrideArg = "nil"
         var descriptionOverrideArg = "nil"
         var docDescriptionArg = "nil"
         var isConsequentialArg = "true"
 
         if let arguments = node.arguments?.as(LabeledExprListSyntax.self) {
             for argument in arguments {
-                if argument.label?.text == "description",
+                if argument.label?.text == "title",
+                   let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self) {
+                    let stringValue = stringLiteral.segments.description
+                    titleOverrideArg = "\"\(stringValue.escapedForSwiftString)\""
+                } else if argument.label?.text == "description",
                    let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self) {
                     let stringValue = stringLiteral.segments.description
                     descriptionOverrideArg = "\"\(stringValue.escapedForSwiftString)\""
@@ -57,11 +62,14 @@ public struct MCPAppIntentToolMacro: MemberMacro, ExtensionMacro {
         let metadataDeclaration = """
 /// Metadata for the \(typeName) tool
 public static let mcpToolMetadata: MCPToolMetadata = {
+   let titleOverride: String? = \(titleOverrideArg)
    let descriptionOverride: String? = \(descriptionOverrideArg)
    let docDescription: String? = \(docDescriptionArg)
+   let resolvedTitle = titleOverride ?? MCPAppIntentTools.titleText(for: Self.self)
    let resolvedDescription = descriptionOverride ?? MCPAppIntentTools.descriptionText(for: Self.self) ?? docDescription
    return MCPToolMetadata(
       name: "\(typeName)",
+      title: resolvedTitle,
       description: resolvedDescription,
       parameters: [\(parameterInfoStrings.joined(separator: ", "))],
       returnType: \(returnTypeExpression),

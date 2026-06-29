@@ -82,6 +82,7 @@ public struct MCPToolMacro: PeerMacro {
         let functionName = commonMetadata.functionName
 
         // Extract description from the attribute if provided, otherwise use from documentation
+        var titleArg = "nil"
         var descriptionArg = "nil"
         var isConsequentialArg = "true"  // Default to true
 
@@ -100,6 +101,9 @@ public struct MCPToolMacro: PeerMacro {
             for argument in arguments {
                 if argument.label?.text == "name", let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self) {
                     customName = stringLiteral.segments.description
+                } else if argument.label?.text == "title", let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self) {
+                    let stringValue = stringLiteral.segments.description
+                    titleArg = "\"\(stringValue.escapedForSwiftString)\""
                 } else if argument.label?.text == "description", let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self) {
                     let stringValue = stringLiteral.segments.description
                     descriptionArg = "\"\(stringValue.escapedForSwiftString)\"" // Ensure proper escaping
@@ -168,6 +172,7 @@ public struct MCPToolMacro: PeerMacro {
 /// Metadata for the \(toolName) tool
 nonisolated private let __mcpMetadata_\(functionName) = MCPToolMetadata(
    name: "\(toolName)",
+   title: \(titleArg),
    description: \(descriptionArg),
    parameters: [\(parameterInfoStrings.joined(separator: ", "))],
    returnType: \(returnTypeString).self,
