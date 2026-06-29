@@ -31,6 +31,7 @@ extension Array where Element == MCPToolMetadata {
             // Create and return the tool
             return MCPTool(
                 name: meta.name,
+                title: meta.title,
                 description: meta.description,
                 inputSchema: inputSchema,
                 outputSchema: outputSchema,

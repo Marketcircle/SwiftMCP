@@ -5,6 +5,9 @@ public struct MCPFunctionMetadata: Sendable {
     /// The name of the function
     public let name: String
 
+    /// A human-readable title for the function
+    public let title: String?
+
     /// A description of the function's purpose
     public let description: String?
 
@@ -28,6 +31,7 @@ public struct MCPFunctionMetadata: Sendable {
      
      - Parameters:
        - name: The name of the function
+       - title: A human-readable title for the function
        - description: A description of the function's purpose
        - parameters: The parameters of the function
        - returnType: The return type of the function, if any
@@ -37,6 +41,7 @@ public struct MCPFunctionMetadata: Sendable {
      */
     public init(
         name: String,
+        title: String? = nil,
         description: String? = nil,
         parameters: [MCPParameterInfo],
         returnType: Sendable.Type? = nil,
@@ -45,6 +50,7 @@ public struct MCPFunctionMetadata: Sendable {
         isThrowing: Bool = false
     ) {
         self.name = name
+        self.title = title
         self.description = description
         self.parameters = parameters
         self.returnType = returnType
