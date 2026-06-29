@@ -12,6 +12,12 @@ import Foundation
 /// Helpers for exposing AppIntents as MCP tools via AppShortcutsProvider.
 @available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
 public enum MCPAppIntentTools {
+    public static func titleText(for intentType: any AppIntent.Type) -> String? {
+        let text = String(localized: intentType.title)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     public static func descriptionText(for intentType: any AppIntent.Type) -> String? {
         guard let intentDescription = intentType.description else { return nil }
         let text = String(localized: intentDescription.descriptionText)

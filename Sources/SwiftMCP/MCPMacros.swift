@@ -69,6 +69,7 @@ public enum MCPToolNaming {
 ///
 /// - Parameters:
 ///   - name: Optional custom tool name override. If nil, uses the Swift function name.
+///   - title: Optional human-readable tool title.
 ///   - description: Optional override for the function's documentation description
 ///   - hints: OptionSet of tool behavior hints (preferred API)
 ///   - isConsequential: Whether the function's actions are consequential (defaults to true, deprecated - use hints instead)
@@ -79,6 +80,7 @@ public enum MCPToolNaming {
 @attached(peer, names: prefixed(__mcpMetadata_), prefixed(__mcpCall_))
 public macro MCPTool(
     name: String? = nil,
+    title: String? = nil,
     description: String? = nil,
     hints: MCPToolHints = [],
     isConsequential: Bool = true,
@@ -94,7 +96,7 @@ public macro MCPTool(
 /// that maps MCP arguments to intent parameters.
 @attached(member, names: named(mcpToolMetadata), named(mcpPerform))
 @attached(extension, conformances: MCPAppIntentTool)
-public macro MCPAppIntentTool(description: String? = nil, isConsequential: Bool = true) = #externalMacro(module: "SwiftMCPMacros", type: "MCPAppIntentToolMacro")
+public macro MCPAppIntentTool(title: String? = nil, description: String? = nil, isConsequential: Bool = true) = #externalMacro(module: "SwiftMCPMacros", type: "MCPAppIntentToolMacro")
 
 /// A macro that adds a `mcpTools` property to a class to aggregate function metadata.
 ///

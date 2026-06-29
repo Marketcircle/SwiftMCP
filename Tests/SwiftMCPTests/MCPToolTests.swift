@@ -41,6 +41,12 @@ class TripleSlashDocumentation {
     func explicitDescription(value: Double) -> Double {
         return value * 2
     }
+
+    /// Function with explicit title override
+    @MCPTool(title: "Readable tool title", description: "Description for titled tool")
+    func explicitTitle() -> String {
+        return "Title"
+    }
     
     /// Function with optional parameters
     /// - Parameter required: A required parameter
@@ -269,6 +275,14 @@ func testBasicFunctionality() {
         }
     } else {
         #expect(Bool(false), "Could not find explicitDescription function")
+    }
+
+    // Test explicit title override
+    if let explicitTitleTool = tools.first(where: { $0.name == "explicitTitle" }) {
+        #expect(explicitTitleTool.title == "Readable tool title")
+        #expect(explicitTitleTool.description == "Description for titled tool")
+    } else {
+        #expect(Bool(false), "Could not find explicitTitle function")
     }
     
     // Test optional parameters
