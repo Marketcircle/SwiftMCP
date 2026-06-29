@@ -23,6 +23,7 @@ public struct MCPToolMetadata: Sendable {
 
      - Parameters:
        - name: The name of the function
+       - title: A human-readable title for the tool
        - description: A description of the function's purpose
        - parameters: The parameters of the function
        - returnType: The return type of the function, if any
@@ -34,6 +35,7 @@ public struct MCPToolMetadata: Sendable {
      */
     public init(
         name: String,
+        title: String? = nil,
         description: String? = nil,
         parameters: [MCPParameterInfo],
         returnType: Sendable.Type? = nil,
@@ -45,6 +47,7 @@ public struct MCPToolMetadata: Sendable {
     ) {
         self.functionMetadata = MCPFunctionMetadata(
             name: name,
+            title: title,
             description: description,
             parameters: parameters,
             returnType: returnType,
@@ -58,6 +61,7 @@ public struct MCPToolMetadata: Sendable {
 
     // Convenience accessors for common properties
     public var name: String { functionMetadata.name }
+    public var title: String? { functionMetadata.title }
     public var description: String? { functionMetadata.description }
     public var parameters: [MCPParameterInfo] { functionMetadata.parameters }
     public var returnType: Sendable.Type? { functionMetadata.returnType }
@@ -92,6 +96,7 @@ public struct MCPToolMetadata: Sendable {
     public func renamed(_ newName: String) -> MCPToolMetadata {
         MCPToolMetadata(
             name: newName,
+            title: title,
             description: description,
             parameters: parameters,
             returnType: returnType,
