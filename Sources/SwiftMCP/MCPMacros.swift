@@ -94,9 +94,22 @@ public macro MCPTool(
 ///
 /// Apply this macro to AppIntent types to generate tool metadata and a wrapper
 /// that maps MCP arguments to intent parameters.
+///
+/// By default the tool `name` is derived from the intent's human-readable
+/// `title` (e.g. a title of `"Create Daylite Category"` produces the name
+/// `"create-daylite-category"`) rather than the Swift type name, so tools never
+/// surface with an `AppIntent` suffix. Pass an explicit `name:` to fully
+/// customise the tool name for a specific intent; it always wins.
+///
+/// - Parameters:
+///   - name: Optional custom tool name override. If nil, the name is derived
+///     from the resolved title, falling back to the Swift type name.
+///   - title: Optional human-readable tool title override.
+///   - description: Optional override for the tool's description.
+///   - isConsequential: Whether the tool's actions are consequential (defaults to true).
 @attached(member, names: named(mcpToolMetadata), named(mcpPerform))
 @attached(extension, conformances: MCPAppIntentTool)
-public macro MCPAppIntentTool(title: String? = nil, description: String? = nil, isConsequential: Bool = true) = #externalMacro(module: "SwiftMCPMacros", type: "MCPAppIntentToolMacro")
+public macro MCPAppIntentTool(name: String? = nil, title: String? = nil, description: String? = nil, isConsequential: Bool = true) = #externalMacro(module: "SwiftMCPMacros", type: "MCPAppIntentToolMacro")
 
 /// A macro that adds a `mcpTools` property to a class to aggregate function metadata.
 ///

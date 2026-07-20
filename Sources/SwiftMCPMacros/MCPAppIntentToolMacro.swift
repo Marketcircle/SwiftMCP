@@ -27,6 +27,7 @@ public struct MCPAppIntentToolMacro: MemberMacro, ExtensionMacro {
 
         let documentation = Documentation(from: declaration.leadingTrivia.description)
 
+        var nameOverrideArg = "nil"
         var titleOverrideArg = "nil"
         var descriptionOverrideArg = "nil"
         var docDescriptionArg = "nil"
@@ -34,7 +35,11 @@ public struct MCPAppIntentToolMacro: MemberMacro, ExtensionMacro {
 
         if let arguments = node.arguments?.as(LabeledExprListSyntax.self) {
             for argument in arguments {
-                if argument.label?.text == "title",
+                if argument.label?.text == "name",
+                   let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self) {
+                    let stringValue = stringLiteral.segments.description
+                    nameOverrideArg = "\"\(stringValue.escapedForSwiftString)\""
+                } else if argument.label?.text == "title",
                    let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self) {
                     let stringValue = stringLiteral.segments.description
                     titleOverrideArg = "\"\(stringValue.escapedForSwiftString)\""
@@ -62,13 +67,15 @@ public struct MCPAppIntentToolMacro: MemberMacro, ExtensionMacro {
         let metadataDeclaration = """
 /// Metadata for the \(typeName) tool
 public static let mcpToolMetadata: MCPToolMetadata = {
+   let nameOverride: String? = \(nameOverrideArg)
    let titleOverride: String? = \(titleOverrideArg)
    let descriptionOverride: String? = \(descriptionOverrideArg)
    let docDescription: String? = \(docDescriptionArg)
    let resolvedTitle = titleOverride ?? MCPAppIntentTools.titleText(for: Self.self)
    let resolvedDescription = descriptionOverride ?? MCPAppIntentTools.descriptionText(for: Self.self) ?? docDescription
+   let resolvedName = nameOverride ?? MCPAppIntentTools.toolName(fromTitle: resolvedTitle) ?? "\(typeName)"
    return MCPToolMetadata(
-      name: "\(typeName)",
+      name: resolvedName,
       title: resolvedTitle,
       description: resolvedDescription,
       parameters: [\(parameterInfoStrings.joined(separator: ", "))],
