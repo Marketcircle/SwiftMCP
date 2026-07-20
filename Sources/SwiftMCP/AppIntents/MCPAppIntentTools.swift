@@ -25,6 +25,22 @@ public enum MCPAppIntentTools {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// Derives a valid MCP tool name from a human-readable title.
+    ///
+    /// The title is split on any non-alphanumeric character and the words are
+    /// lowercased and joined with hyphens, yielding a kebab-case identifier that
+    /// matches the tool name grammar (`[A-Za-z0-9_-]`). For example,
+    /// `"Create Daylite Category"` becomes `"create-daylite-category"`. Returns
+    /// `nil` when the title is `nil` or contains no alphanumeric characters, so
+    /// callers can fall back.
+    public static func toolName(fromTitle title: String?) -> String? {
+        guard let title else { return nil }
+        let words = title.split { !$0.isLetter && !$0.isNumber }
+        guard !words.isEmpty else { return nil }
+        let name = words.map { $0.lowercased() }.joined(separator: "-")
+        return name.isEmpty ? nil : name
+    }
+
     public static func toolMetadata(for providerType: MCPAppShortcutsProvider.Type) -> [MCPToolMetadata] {
         toolInstances(for: providerType).map { $0.mcpToolMetadata }
     }

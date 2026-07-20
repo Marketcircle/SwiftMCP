@@ -59,6 +59,16 @@ private struct DefaultTitledShortcutIntent: AppIntent {
     }
 }
 
+@MCPAppIntentTool(name: "custom_tool_name", title: "Named Shortcut", description: "Uses an explicit name override")
+@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
+private struct NamedShortcutIntent: AppIntent {
+    static let title: LocalizedStringResource = "Named Shortcut"
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        .result(value: "named")
+    }
+}
+
 @available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
 private struct TestShortcutsProvider: AppShortcutsProvider, MCPAppIntentShortcutsProviding {
     static var appShortcuts: [AppShortcut] {
@@ -117,6 +127,12 @@ private struct TitledShortcutsProvider: AppShortcutsProvider, MCPAppIntentShortc
                 shortTitle: "Default Titled",
                 systemImageName: "textformat"
             ),
+            AppShortcut(
+                intent: NamedShortcutIntent(),
+                phrases: ["Run named shortcut in \(.applicationName)"],
+                shortTitle: "Named",
+                systemImageName: "textformat"
+            ),
         ]
     }
 }
@@ -149,9 +165,10 @@ struct MCPAppIntentShortcutsProvidingTests {
         }
 
         let metadata = MCPAppIntentTools.toolMetadata(for: TitledShortcutsProvider.self)
-        let tool = try! #require(metadata.first { $0.name == "TitledShortcutIntent" })
+        let tool = try! #require(metadata.first { $0.title == "Get Daylite task" })
 
-        #expect(tool.name == "TitledShortcutIntent")
+        // The name is derived from the resolved title, not the Swift type name.
+        #expect(tool.name == "get-daylite-task")
         #expect(tool.title == "Get Daylite task")
         #expect(tool.description == "Retrieve a Daylite task by ID")
     }
@@ -163,9 +180,9 @@ struct MCPAppIntentShortcutsProvidingTests {
 
         let metadata = MCPAppIntentTools.toolMetadata(for: TitledShortcutsProvider.self)
         let tools = metadata.convertedToTools()
-        let tool = try! #require(tools.first { $0.name == "TitledShortcutIntent" })
+        let tool = try! #require(tools.first { $0.title == "Get Daylite task" })
 
-        #expect(tool.name == "TitledShortcutIntent")
+        #expect(tool.name == "get-daylite-task")
         #expect(tool.title == "Get Daylite task")
         #expect(tool.description == "Retrieve a Daylite task by ID")
     }
@@ -176,11 +193,26 @@ struct MCPAppIntentShortcutsProvidingTests {
         }
 
         let metadata = MCPAppIntentTools.toolMetadata(for: TitledShortcutsProvider.self)
-        let tool = try! #require(metadata.first { $0.name == "DefaultTitledShortcutIntent" })
+        let tool = try! #require(metadata.first { $0.title == "Default AppIntent Title" })
 
-        #expect(tool.name == "DefaultTitledShortcutIntent")
+        // Falls back to the AppIntent's own title, and the name is derived from it.
+        #expect(tool.name == "default-appintent-title")
         #expect(tool.title == "Default AppIntent Title")
         #expect(tool.description == "Uses the AppIntent title")
+    }
+
+    @Test func appIntentToolNameCanBeOverridden() {
+        guard #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) else {
+            return
+        }
+
+        let metadata = MCPAppIntentTools.toolMetadata(for: TitledShortcutsProvider.self)
+        let tool = try! #require(metadata.first { $0.title == "Named Shortcut" })
+
+        // An explicit `name:` override always wins over the title-derived name.
+        #expect(tool.name == "custom_tool_name")
+        #expect(tool.title == "Named Shortcut")
+        #expect(tool.description == "Uses an explicit name override")
     }
 }
 #endif
