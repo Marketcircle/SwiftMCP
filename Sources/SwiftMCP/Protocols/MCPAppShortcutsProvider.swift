@@ -18,7 +18,7 @@ public typealias MCPAppShortcutsProvider = AppShortcutsProvider
 /// system-facing `appShortcuts` separate from the shortcuts SwiftMCP exposes as
 /// MCP tools.
 @available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
-public protocol MCPAppIntentShortcutsProviding {
+public protocol MCPAppShortcutsRepresentable {
     static var mcpAppShortcuts: [AppShortcut] { get }
 }
 #else
@@ -26,5 +26,5 @@ public protocol MCPAppIntentShortcutsProviding {
 public protocol MCPAppShortcutsProvider {}
 
 /// Stub protocol for platforms without AppIntents support.
-public protocol MCPAppIntentShortcutsProviding {}
+public protocol MCPAppShortcutsRepresentable {}
 #endif
