@@ -70,7 +70,7 @@ private struct NamedShortcutIntent: AppIntent {
 }
 
 @available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
-private struct TestShortcutsProvider: AppShortcutsProvider, MCPAppIntentShortcutsProviding {
+private struct TestShortcutsProvider: AppShortcutsProvider, MCPAppShortcutsRepresentable {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: PublicShortcutIntent(),
@@ -103,7 +103,7 @@ private struct TestShortcutsProvider: AppShortcutsProvider, MCPAppIntentShortcut
 }
 
 @available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
-private struct TitledShortcutsProvider: AppShortcutsProvider, MCPAppIntentShortcutsProviding {
+private struct TitledShortcutsProvider: AppShortcutsProvider, MCPAppShortcutsRepresentable {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: PublicShortcutIntent(),
@@ -137,7 +137,7 @@ private struct TitledShortcutsProvider: AppShortcutsProvider, MCPAppIntentShortc
     }
 }
 
-struct MCPAppIntentShortcutsProvidingTests {
+struct MCPAppShortcutsRepresentableTests {
     @Test func mcpSpecificShortcutsOverrideSystemAppShortcuts() {
         guard #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) else {
             return

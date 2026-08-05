@@ -86,7 +86,7 @@ public enum MCPAppIntentTools {
     }
 
     private static func shortcuts(for providerType: MCPAppShortcutsProvider.Type) -> [AppShortcut] {
-        if let mcpProviderType = providerType as? MCPAppIntentShortcutsProviding.Type {
+        if let mcpProviderType = providerType as? MCPAppShortcutsRepresentable.Type {
             return mcpProviderType.mcpAppShortcuts
         }
 
