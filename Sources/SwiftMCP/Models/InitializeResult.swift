@@ -18,6 +18,9 @@ public struct InitializeResult: Codable, Sendable {
     /// Information about the server
     public let serverInfo: ServerInfo
 
+    /// Optional usage instructions for the client. Omitted from the wire when `nil`.
+    public let instructions: String?
+
     /// Server information structure
     public struct ServerInfo: Codable, Sendable {
         /// The name of the server
@@ -36,9 +39,10 @@ public struct InitializeResult: Codable, Sendable {
         }
     }
 
-    public init(protocolVersion: String, capabilities: ServerCapabilities, serverInfo: ServerInfo) {
+    public init(protocolVersion: String, capabilities: ServerCapabilities, serverInfo: ServerInfo, instructions: String? = nil) {
         self.protocolVersion = protocolVersion
         self.capabilities = capabilities
         self.serverInfo = serverInfo
+        self.instructions = instructions
     }
 } 
