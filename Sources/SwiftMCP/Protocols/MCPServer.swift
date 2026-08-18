@@ -274,7 +274,8 @@ public extension MCPServer {
      - Protocol version
      - Server capabilities
      - Server information
-     
+     - Usage instructions, when the server conforms to ``MCPInstructable``
+
      - Parameter id: The request ID to include in the response
      - Returns: A JSON-RPC message containing the initialization response
      */
@@ -311,7 +312,8 @@ public extension MCPServer {
         let result = InitializeResult(
             protocolVersion: "2025-06-18",
             capabilities: capabilities,
-            serverInfo: serverInfo
+            serverInfo: serverInfo,
+            instructions: (self as? MCPInstructable)?.mcpServerInstructions
         )
 
         do {
