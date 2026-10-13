@@ -24,6 +24,11 @@ actor SessionManager {
         }
     }
 
+    /// The session for the given identifier, or nil if none exists.
+    func existingSession(id: UUID) -> Session? {
+        sessions[id]
+    }
+
     /// Retrieve or create a session for the given identifier.
     func session(id: UUID) async -> Session {
         if let existing = sessions[id] {
