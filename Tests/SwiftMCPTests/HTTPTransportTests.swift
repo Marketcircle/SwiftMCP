@@ -421,6 +421,96 @@ struct HTTPTransportTests {
 		#endif
 	}
 
+	/// POSTs an initialize request to the given legacy messages URL and returns the status and body.
+	private func postInitialize(to messagesURL: URL) async throws -> (status: Int, body: String?) {
+		var req = URLRequest(url: messagesURL)
+		req.httpMethod = "POST"
+		req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		req.httpBody = try encode(initializeRequest())
+		let (body, resp) = try await URLSession(configuration: .ephemeral).data(for: req)
+		return ((resp as! HTTPURLResponse).statusCode, String(data: body, encoding: .utf8))
+	}
+
+	/// A POST for a session id the transport has never seen is answered with 404 and creates nothing.
+	@Test("Legacy SSE: POST to an unknown session returns 404")
+	func legacySSEUnknownSessionRejected() async throws {
+		#if canImport(FoundationNetworking)
+		// Not run on Linux.
+		return
+		#else
+		let (transport, baseURL) = try await startTransport()
+		defer { Task { try? await transport.stop() } }
+
+		let result = try await postInitialize(to: baseURL.appendingPathComponent("messages/\(UUID().uuidString)"))
+		#expect(result.status == 404)
+		#expect(result.body == "Unknown session.")
+		#expect(await transport.sessionManager.sessions.isEmpty)
+		#endif
+	}
+
+	/// Opens GET /sse on a raw socket and returns the socket plus the messages URL from the endpoint event.
+	private func openLegacySSESocket(baseURL: URL) throws -> (fd: Int32, messagesURL: URL) {
+		let fd = socket(AF_INET, SOCK_STREAM, 0)
+		#expect(fd >= 0)
+		var addr = sockaddr_in()
+		addr.sin_family = sa_family_t(AF_INET)
+		addr.sin_port = in_port_t(UInt16(baseURL.port!).bigEndian)
+		addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+		let connected = withUnsafePointer(to: &addr) {
+			$0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+		}
+		#expect(connected == 0)
+		let request = "GET /sse HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n"
+		_ = request.withCString { send(fd, $0, strlen($0), 0) }
+
+		var received = ""
+		var buffer = [UInt8](repeating: 0, count: 4096)
+		let deadline = Date().addingTimeInterval(2)
+		while Date() < deadline, !received.contains("/messages/") {
+			let n = recv(fd, &buffer, buffer.count, 0)
+			guard n > 0 else { break }
+			received += String(decoding: buffer[0..<n], as: UTF8.self)
+		}
+		let endpointLine = received.components(separatedBy: "\n").first { $0.hasPrefix("data: ") && $0.contains("/messages/") }
+		let messagesURL = endpointLine.flatMap { URL(string: String($0.dropFirst("data: ".count)).trimmingCharacters(in: .whitespacesAndNewlines)) }
+		guard let messagesURL else {
+			close(fd)
+			throw TestError.noEndpoint(received)
+		}
+		return (fd, messagesURL)
+	}
+
+	/// Thrown when the SSE handshake does not deliver an endpoint event.
+	private enum TestError: Error { case noEndpoint(String) }
+
+	/// A POST for a session whose SSE stream has closed is answered with 404 and the session is not recreated.
+	@Test("Legacy SSE: POST after the stream closed returns 404")
+	func legacySSEClosedSessionRejected() async throws {
+		#if canImport(FoundationNetworking)
+		// Not run on Linux.
+		return
+		#else
+		let (transport, baseURL) = try await startTransport()
+		defer { Task { try? await transport.stop() } }
+
+		let (fd, messagesURL) = try openLegacySSESocket(baseURL: baseURL)
+		#expect(await transport.sessionManager.sessions.count == 1)
+
+		// Close the stream and wait for the transport to drop the session
+		close(fd)
+		let deadline = Date().addingTimeInterval(5)
+		while Date() < deadline, await !transport.sessionManager.sessions.isEmpty {
+			try await Task.sleep(for: .milliseconds(100))
+		}
+		#expect(await transport.sessionManager.sessions.isEmpty)
+
+		let result = try await postInitialize(to: messagesURL)
+		#expect(result.status == 404)
+		#expect(result.body == "Unknown session.")
+		#expect(await transport.sessionManager.sessions.isEmpty)
+		#endif
+	}
+
 	// MARK: - DELETE /mcp
 
 	@Test("DELETE /mcp: removes session")
