@@ -164,6 +164,11 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
         let status = nioStatus(response.status)
 
         if let stream = response.bodyStream {
+            // The pipelining handler pauses reads while a response is pending; drop it for the stream
+            if let pipelining = try? await channel.pipeline.handler(type: HTTPServerPipelineHandler.self).get() {
+                try? await channel.pipeline.removeHandler(pipelining).get()
+            }
+
             // For streaming responses (SSE), don't set Content-Length.
             // Write head immediately so the client can start consuming.
             let head = HTTPResponseHead(version: .http1_1, status: status, headers: nioHeaders)
