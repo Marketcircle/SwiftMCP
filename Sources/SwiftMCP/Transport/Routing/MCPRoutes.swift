@@ -27,7 +27,7 @@ extension HTTPSSETransport {
 		let sessionID: UUID
 		if let clientSessionID = request.sessionID, let parsed = UUID(uuidString: clientSessionID) {
 			guard await sessionManager.sessions[parsed] != nil else {
-				return RouteResponse(status: .notFound, body: Data("Unknown session.".utf8))
+				return .unknownSession
 			}
 			sessionID = parsed
 		} else {
