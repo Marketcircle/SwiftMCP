@@ -511,6 +511,69 @@ struct HTTPTransportTests {
 		#endif
 	}
 
+	/// Counts the pings that arrive on an open SSE socket during the given number of seconds.
+	private func countPings(fd: Int32, seconds: TimeInterval) -> Int {
+		var timeout = timeval(tv_sec: 0, tv_usec: 100_000)
+		setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+		var received = ""
+		var buffer = [UInt8](repeating: 0, count: 4096)
+		let deadline = Date().addingTimeInterval(seconds)
+		while Date() < deadline {
+			let n = recv(fd, &buffer, buffer.count, 0)
+			if n > 0 { received += String(decoding: buffer[0..<n], as: UTF8.self) }
+		}
+		return received.components(separatedBy: "\"method\":\"ping\"").count - 1
+	}
+
+	/// Checks that an open SSE stream receives pings at an interval set after start.
+	@Test("Legacy SSE: pings arrive at an interval set after start")
+	func legacySSEKeepAliveIntervalAfterStart() async throws {
+		#if canImport(FoundationNetworking)
+		// The test does not run on Linux.
+		return
+		#else
+		let (transport, baseURL) = try await startTransport()
+		defer { Task { try? await transport.stop() } }
+		transport.keepAliveInterval = 0.2
+
+		let (fd, _) = try openLegacySSESocket(baseURL: baseURL)
+		defer { close(fd) }
+		let pings = countPings(fd: fd, seconds: 1.5)
+		#expect(pings >= 3, "Expected at least 3 pings in 1.5 s at a 0.2 s interval, got \(pings)")
+		#endif
+	}
+
+	/// Checks that an open SSE stream receives pings at an interval set before start.
+	@Test("Legacy SSE: pings arrive at an interval set before start")
+	func legacySSEKeepAliveIntervalBeforeStart() async throws {
+		#if canImport(FoundationNetworking)
+		// The test does not run on Linux.
+		return
+		#else
+		let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
+		transport.keepAliveInterval = 0.2
+		try await transport.start()
+		defer { Task { try? await transport.stop() } }
+		let baseURL = URL(string: "http://127.0.0.1:\(transport.port)")!
+
+		let (fd, _) = try openLegacySSESocket(baseURL: baseURL)
+		defer { close(fd) }
+		let pings = countPings(fd: fd, seconds: 1.5)
+		#expect(pings >= 3, "Expected at least 3 pings in 1.5 s at a 0.2 s interval, got \(pings)")
+		#endif
+	}
+
+	/// Checks that a keep-alive interval of zero or less leaves the previous value in place.
+	@Test("Keep-alive interval ignores zero and negative values")
+	func keepAliveIntervalIgnoresNonPositive() {
+		let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
+		transport.keepAliveInterval = 5
+		transport.keepAliveInterval = 0
+		#expect(transport.keepAliveInterval == 5)
+		transport.keepAliveInterval = -1
+		#expect(transport.keepAliveInterval == 5)
+	}
+
 	// MARK: - DELETE /mcp
 
 	@Test("DELETE /mcp: removes session")
