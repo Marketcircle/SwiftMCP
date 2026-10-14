@@ -26,7 +26,7 @@ extension HTTPSSETransport {
 	// MARK: - Handler Implementations
 
 	/// Handle POST /messages/:sessionID — legacy message endpoint.
-	/// A session id with no open SSE stream is answered with 404.
+	/// Returns 404 when the session has no open SSE stream.
 	func handleMessages(request: HTTPRouteRequest<Data?>) async throws -> RouteResponse {
 
 		// Extract client ID from URL path
@@ -38,8 +38,8 @@ extension HTTPSSETransport {
 			return RouteResponse(status: .badRequest)
 		}
 
-		// Legacy sessions exist only while their GET /sse stream is open
-		guard await sessionManager.existingSession(id: sessionID) != nil else {
+		// The guard rejects ids with no open stream.
+		guard let openSession = await sessionManager.existingSession(id: sessionID) else {
 			logger.warning("Rejected POST for unknown legacy session \(sessionID)")
 			return .unknownSession
 		}
@@ -66,8 +66,9 @@ extension HTTPSSETransport {
 		do {
 			let messages = try JSONRPCMessage.decodeMessages(from: body)
 
-			// Look the session up again without creating it
-			guard let session = await sessionManager.existingSession(id: sessionID) else {
+			// The second guard rejects a session that closed or was recreated during authorization.
+			guard let session = await sessionManager.existingSession(id: sessionID), session === openSession else {
+				await sessionManager.removeSession(id: sessionID)
 				logger.warning("Rejected POST for unknown legacy session \(sessionID)")
 				return .unknownSession
 			}

@@ -41,7 +41,7 @@ struct RouteResponse: Sendable {
 		self.streamSessionID = nil
 	}
 
-	/// 404 for a session id the transport does not know.
+	/// The 404 response for a session id the transport does not know.
 	static let unknownSession = RouteResponse(status: .notFound, body: Data("Unknown session.".utf8))
 
 	static func json<T: Encodable>(_ value: T, status: HTTPStatus = .ok, sessionId: String? = nil) -> RouteResponse {
