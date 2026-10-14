@@ -164,8 +164,9 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
         let status = nioStatus(response.status)
 
         if let stream = response.bodyStream {
-            // The pipelining handler pauses reads while a response is pending; drop it for the stream
-            if let pipelining = try? await channel.pipeline.handler(type: HTTPServerPipelineHandler.self).get() {
+            // The pipelining handler is removed on SSE connections so the channel keeps reading.
+            let isEventStream = nioHeaders["Content-Type"].contains { $0.lowercased().hasPrefix("text/event-stream") }
+            if isEventStream, let pipelining = try? await channel.pipeline.handler(type: HTTPServerPipelineHandler.self).get() {
                 try? await channel.pipeline.removeHandler(pipelining).get()
             }
 
