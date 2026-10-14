@@ -431,11 +431,11 @@ struct HTTPTransportTests {
 		return ((resp as! HTTPURLResponse).statusCode, String(data: body, encoding: .utf8))
 	}
 
-	/// A POST for a session id the transport has never seen is answered with 404 and creates nothing.
+	/// Checks that a POST for an unknown session id returns 404 and creates nothing.
 	@Test("Legacy SSE: POST to an unknown session returns 404")
 	func legacySSEUnknownSessionRejected() async throws {
 		#if canImport(FoundationNetworking)
-		// Not run on Linux.
+		// The test does not run on Linux.
 		return
 		#else
 		let (transport, baseURL) = try await startTransport()
@@ -448,10 +448,13 @@ struct HTTPTransportTests {
 		#endif
 	}
 
+	#if canImport(Darwin)
 	/// Opens GET /sse on a raw socket and returns the socket plus the messages URL from the endpoint event.
 	private func openLegacySSESocket(baseURL: URL) throws -> (fd: Int32, messagesURL: URL) {
 		let fd = socket(AF_INET, SOCK_STREAM, 0)
 		#expect(fd >= 0)
+		var timeout = timeval(tv_sec: 0, tv_usec: 100_000)
+		setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
 		var addr = sockaddr_in()
 		addr.sin_family = sa_family_t(AF_INET)
 		addr.sin_port = in_port_t(UInt16(baseURL.port!).bigEndian)
@@ -466,12 +469,14 @@ struct HTTPTransportTests {
 		var received = ""
 		var buffer = [UInt8](repeating: 0, count: 4096)
 		let deadline = Date().addingTimeInterval(2)
-		while Date() < deadline, !received.contains("/messages/") {
-			let n = recv(fd, &buffer, buffer.count, 0)
-			guard n > 0 else { break }
-			received += String(decoding: buffer[0..<n], as: UTF8.self)
+		func endpointLine() -> String? {
+			received.components(separatedBy: "\n").dropLast().first { $0.hasPrefix("data: ") && $0.contains("/messages/") }
 		}
-		let endpointLine = received.components(separatedBy: "\n").first { $0.hasPrefix("data: ") && $0.contains("/messages/") }
+		while Date() < deadline, endpointLine() == nil {
+			let n = recv(fd, &buffer, buffer.count, 0)
+			if n > 0 { received += String(decoding: buffer[0..<n], as: UTF8.self) }
+		}
+		let endpointLine = endpointLine()
 		let messagesURL = endpointLine.flatMap { URL(string: String($0.dropFirst("data: ".count)).trimmingCharacters(in: .whitespacesAndNewlines)) }
 		guard let messagesURL else {
 			close(fd)
@@ -480,14 +485,15 @@ struct HTTPTransportTests {
 		return (fd, messagesURL)
 	}
 
-	/// Thrown when the SSE handshake does not deliver an endpoint event.
+	/// The error thrown when the SSE handshake delivers no endpoint event.
 	private enum TestError: Error { case noEndpoint(String) }
+	#endif
 
-	/// A POST for a session whose SSE stream has closed is answered with 404 and the session is not recreated.
+	/// Checks that a POST after the stream closed returns 404 and does not recreate the session.
 	@Test("Legacy SSE: POST after the stream closed returns 404")
 	func legacySSEClosedSessionRejected() async throws {
 		#if canImport(FoundationNetworking)
-		// Not run on Linux.
+		// The test does not run on Linux.
 		return
 		#else
 		let (transport, baseURL) = try await startTransport()
@@ -496,7 +502,7 @@ struct HTTPTransportTests {
 		let (fd, messagesURL) = try openLegacySSESocket(baseURL: baseURL)
 		#expect(await transport.sessionManager.sessions.count == 1)
 
-		// Close the stream and wait for the transport to drop the session
+		// The transport drops the session once the stream closes.
 		close(fd)
 		let deadline = Date().addingTimeInterval(5)
 		while Date() < deadline, await !transport.sessionManager.sessions.isEmpty {
@@ -511,10 +517,9 @@ struct HTTPTransportTests {
 		#endif
 	}
 
+	#if canImport(Darwin)
 	/// Counts the pings that arrive on an open SSE socket during the given number of seconds.
 	private func countPings(fd: Int32, seconds: TimeInterval) -> Int {
-		var timeout = timeval(tv_sec: 0, tv_usec: 100_000)
-		setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
 		var received = ""
 		var buffer = [UInt8](repeating: 0, count: 4096)
 		let deadline = Date().addingTimeInterval(seconds)
@@ -524,6 +529,7 @@ struct HTTPTransportTests {
 		}
 		return received.components(separatedBy: "\"method\":\"ping\"").count - 1
 	}
+	#endif
 
 	/// Checks that an open SSE stream receives pings at an interval set after start.
 	@Test("Legacy SSE: pings arrive at an interval set after start")
@@ -565,13 +571,14 @@ struct HTTPTransportTests {
 
 	/// Checks that a keep-alive interval of zero or less leaves the previous value in place.
 	@Test("Keep-alive interval ignores zero and negative values")
-	func keepAliveIntervalIgnoresNonPositive() {
+	func keepAliveIntervalIgnoresNonPositive() async throws {
 		let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
 		transport.keepAliveInterval = 5
 		transport.keepAliveInterval = 0
 		#expect(transport.keepAliveInterval == 5)
 		transport.keepAliveInterval = -1
 		#expect(transport.keepAliveInterval == 5)
+		try await transport.stop()
 	}
 
 	// MARK: - DELETE /mcp
