@@ -38,6 +38,8 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     internal lazy var sessionManager = SessionManager(transport: self)
     internal let pendingUploadStore = PendingUploadStore()
     internal var keepAliveTimer: DispatchSourceTimer?
+    /// The lock that serializes every change to `keepAliveTimer`.
+    private let keepAliveLock = NSLock()
 
     /// The HTTP router that dispatches incoming requests to route handlers.
     internal lazy var router: Router = buildRouter()
@@ -211,15 +213,17 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         }
     }
 
-    /// Holds the number of seconds between keep-alive messages, 60 by default. A value of zero or less is ignored.
+    /// The number of seconds between keep-alive messages, 60 by default. A value of zero or less is ignored.
     public var keepAliveInterval: TimeInterval = 60 {
         didSet {
             guard keepAliveInterval > 0 else {
                 keepAliveInterval = oldValue
                 return
             }
-            if keepAliveTimer != nil {
-                startKeepAliveTimer()
+            keepAliveLock.withLock {
+                if keepAliveTimer != nil {
+                    restartKeepAliveTimerLocked()
+                }
             }
         }
     }
@@ -320,23 +324,33 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         logger.info("Server stopped")
     }
 
-    /// Cancels any running keep-alive timer and starts a new one at `keepAliveInterval`.
+    /// Starts the keep-alive timer at `keepAliveInterval`, replacing any running one.
     internal func startKeepAliveTimer() {
-        keepAliveTimer?.cancel()
-        keepAliveTimer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
-        keepAliveTimer?.schedule(deadline: .now(), repeating: keepAliveInterval)
-        keepAliveTimer?.setEventHandler { [weak self] in
-            self?.sendKeepAlive()
+        keepAliveLock.withLock {
+            restartKeepAliveTimerLocked()
         }
-        keepAliveTimer?.resume()
         logger.trace("Started keep-alive timer")
     }
 
     /// Stop the keep-alive timer.
     internal func stopKeepAliveTimer() {
-        keepAliveTimer?.cancel()
-        keepAliveTimer = nil
+        keepAliveLock.withLock {
+            keepAliveTimer?.cancel()
+            keepAliveTimer = nil
+        }
         logger.trace("Stopped keep-alive timer")
+    }
+
+    /// Starts a new keep-alive timer at `keepAliveInterval` while the caller holds `keepAliveLock`.
+    private func restartKeepAliveTimerLocked() {
+        keepAliveTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
+        timer.schedule(deadline: .now(), repeating: keepAliveInterval)
+        timer.setEventHandler { [weak self] in
+            self?.sendKeepAlive()
+        }
+        timer.resume()
+        keepAliveTimer = timer
     }
 
     /// Send a keep-alive message to all connected SSE clients.
