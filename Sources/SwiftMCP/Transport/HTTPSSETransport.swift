@@ -82,57 +82,13 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// Perform authorization using either the OAuth configuration or the
     /// synchronous ``authorizationHandler`` closure.
     func authorize(_ token: String?, sessionID: UUID?) async -> AuthorizationResult {
-        // Check for JWE tokens first (5 segments: header.encrypted_key.iv.ciphertext.tag)
-        if let token = token {
-            let segments = token.split(separator: ".")
-            if segments.count == 5 {
-                // JWE token detected - only allow in proxy mode
-                if let oauthConfiguration = oauthConfiguration, oauthConfiguration.transparentProxy {
-                    // In proxy mode, we can handle JWE tokens by proxying them
-                    // Continue with normal validation
-                } else {
-                    // In non-proxy mode, JWE tokens are not supported
-                    let audience = oauthConfiguration?.audience ?? "your-api"
-                    return .jweNotSupported("Encrypted (JWE) tokens are not supported. Use a signed JWT (JWS) with audience=\(audience)")
-                }
-            }
+        if let rejection = rejectJWE(token) {
+            return rejection
         }
-        
+
         // 1. If we have a session ID, check token against session-stored value
         if let id = sessionID {
-            let session = await sessionManager.session(id: id)
-            if let stored = await session.accessToken {
-                if stored == token, (await session.accessTokenExpiry ?? Date.distantFuture) > Date() {
-                    return .authorized
-                } else {
-                    return .unauthorized("Invalid or expired token")
-                }
-            } else if let token { 
-                // First time we see a token for this session - validate it before accepting
-                let isValid = await validateNewToken(token)
-                if isValid {
-                    await session.setAccessToken(token)
-                    // Without expires_in we can't know exact lifetime; fall back to 24 h.
-                    await session.setAccessTokenExpiry(Date().addingTimeInterval(24 * 60 * 60))
-                    
-                    // Fetch and store user info if we have OAuth configuration
-                    if let oauthConfiguration = oauthConfiguration {
-                        await sessionManager.fetchAndStoreUserInfo(for: id, oauthConfiguration: oauthConfiguration)
-                    }
-                    
-                    return .authorized
-                } else {
-                    return .unauthorized("Invalid token - token exchange required")
-                }
-            } else {
-                // No token provided for this session
-                // If OAuth is configured, require authentication
-                if oauthConfiguration != nil {
-                    return .unauthorized("Authentication required")
-                }
-                // Otherwise use legacy handler (for unauthenticated mode)
-                return authorizationHandler(token)
-            }
+            return await authorize(token, session: sessionManager.session(id: id))
         }
 
         // 2. If we don't have a sessionID, see if we can locate a session by token.
@@ -159,7 +115,60 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         // 5. Otherwise use legacy handler (for unauthenticated mode)
         return authorizationHandler(token)
     }
-    
+
+    /// Authorizes a token against a session that already exists, without creating one.
+    func authorize(_ token: String?, session: Session) async -> AuthorizationResult {
+        if let rejection = rejectJWE(token) {
+            return rejection
+        }
+        if let stored = await session.accessToken {
+            if stored == token, (await session.accessTokenExpiry ?? Date.distantFuture) > Date() {
+                return .authorized
+            } else {
+                return .unauthorized("Invalid or expired token")
+            }
+        } else if let token {
+            // First time we see a token for this session - validate it before accepting
+            let isValid = await validateNewToken(token)
+            if isValid {
+                await session.setAccessToken(token)
+                // Without expires_in we can't know exact lifetime; fall back to 24 h.
+                await session.setAccessTokenExpiry(Date().addingTimeInterval(24 * 60 * 60))
+
+                // Fetch and store user info if we have OAuth configuration
+                if let oauthConfiguration = oauthConfiguration {
+                    await sessionManager.fetchAndStoreUserInfo(for: session.id, oauthConfiguration: oauthConfiguration)
+                }
+
+                return .authorized
+            } else {
+                return .unauthorized("Invalid token - token exchange required")
+            }
+        } else {
+            // No token provided for this session
+            // If OAuth is configured, require authentication
+            if oauthConfiguration != nil {
+                return .unauthorized("Authentication required")
+            }
+            // Otherwise use legacy handler (for unauthenticated mode)
+            return authorizationHandler(token)
+        }
+    }
+
+    /// Returns the rejection for an encrypted token outside proxy mode, or nil.
+    private func rejectJWE(_ token: String?) -> AuthorizationResult? {
+        // A JWE token has 5 segments: header.encrypted_key.iv.ciphertext.tag
+        guard let token, token.split(separator: ".").count == 5 else {
+            return nil
+        }
+        if let oauthConfiguration, oauthConfiguration.transparentProxy {
+            // In proxy mode, we can handle JWE tokens by proxying them
+            return nil
+        }
+        let audience = oauthConfiguration?.audience ?? "your-api"
+        return .jweNotSupported("Encrypted (JWE) tokens are not supported. Use a signed JWT (JWS) with audience=\(audience)")
+    }
+
     /// Validate a new token using OAuth configuration or authorization handler
     internal func validateNewToken(_ token: String) async -> Bool {
         // If we have OAuth configuration, use its validation
