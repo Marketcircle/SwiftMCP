@@ -214,19 +214,23 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     }
 
     /// The number of seconds between keep-alive messages, 60 by default. A value of zero or less is ignored.
-    public var keepAliveInterval: TimeInterval = 60 {
-        didSet {
-            guard keepAliveInterval > 0 else {
-                keepAliveInterval = oldValue
+    public var keepAliveInterval: TimeInterval {
+        get { keepAliveLock.withLock { storedKeepAliveInterval } }
+        set {
+            guard newValue > 0 else {
                 return
             }
             keepAliveLock.withLock {
+                storedKeepAliveInterval = newValue
                 if keepAliveTimer != nil {
                     restartKeepAliveTimerLocked()
                 }
             }
         }
     }
+
+    /// The keep-alive interval, read and written only under `keepAliveLock`.
+    private var storedKeepAliveInterval: TimeInterval = 60
 
     /// The number of active SSE channels currently connected to the server.
     var sseChannelCount: Int {
@@ -345,7 +349,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     private func restartKeepAliveTimerLocked() {
         keepAliveTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
-        timer.schedule(deadline: .now(), repeating: keepAliveInterval)
+        timer.schedule(deadline: .now(), repeating: storedKeepAliveInterval)
         timer.setEventHandler { [weak self] in
             self?.sendKeepAlive()
         }
