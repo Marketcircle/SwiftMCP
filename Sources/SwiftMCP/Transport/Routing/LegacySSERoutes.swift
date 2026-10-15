@@ -47,7 +47,7 @@ extension HTTPSSETransport {
 		// Check authorization
 		let token = request.bearerToken
 
-		let authResult = await authorize(token, sessionID: sessionID)
+		let authResult = await authorize(token, session: openSession)
 		switch authResult {
 		case .unauthorized(let message):
 			let err = JSONRPCMessage.errorResponse(id: nil, error: .init(code: -32000, message: "Unauthorized: \(message)"))
@@ -66,9 +66,8 @@ extension HTTPSSETransport {
 		do {
 			let messages = try JSONRPCMessage.decodeMessages(from: body)
 
-			// The second guard rejects a session that closed or was recreated during authorization.
+			// The second guard rejects a session that closed or was replaced during authorization.
 			guard let session = await sessionManager.existingSession(id: sessionID), session === openSession else {
-				await sessionManager.removeSession(id: sessionID)
 				logger.warning("Rejected POST for unknown legacy session \(sessionID)")
 				return .unknownSession
 			}
