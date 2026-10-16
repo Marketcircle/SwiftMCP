@@ -115,7 +115,8 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         // 2. If we don't have a sessionID, see if we can locate a session by token.
         if let token, sessionID == nil {
             if await sessionManager.session(forToken: token) != nil {
-                return .authorized
+                // Without OAuth, the handler decides every request.
+                return oauthConfiguration == nil ? authorizationHandler(token) : .authorized
             }
         }
 
