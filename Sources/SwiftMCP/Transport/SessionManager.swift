@@ -160,7 +160,7 @@ actor SessionManager {
         sessions.removeValue(forKey: id)
     }
 
-    /// Removes every session without an open channel whose last request is older than the given number of seconds.
+    /// Removes every session with no open channel that has been idle longer than the given seconds.
     func removeIdleSessions(olderThan interval: TimeInterval) async {
         let cutoff = Date().addingTimeInterval(-interval)
         for (id, session) in sessions {

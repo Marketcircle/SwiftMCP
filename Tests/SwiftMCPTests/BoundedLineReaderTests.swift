@@ -8,7 +8,7 @@ struct BoundedLineReaderTests {
     private func lines(of input: String, limit: Int) throws -> [BoundedLineReader.Line] {
         let pipe = Pipe()
         let writer = pipe.fileHandleForWriting
-        // The writer runs on its own queue because a long input fills the pipe before the reader starts.
+        // A background queue writes the input while the reader reads it.
         DispatchQueue.global().async {
             try? writer.write(contentsOf: Data(input.utf8))
             try? writer.close()

@@ -53,13 +53,13 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// The lifetime in seconds of an access token that comes without `expires_in`.
     static let defaultAccessTokenLifetime = 60 * 60
 
-    /// The most sessions the server keeps at once, 64 by default. A request that would open one more gets a 503.
+    /// The most sessions the server keeps at once, 64 by default.
     public var maxSessions: Int = 64
 
-    /// The seconds a session without an open stream may sit idle before the keep-alive tick removes it, 30 minutes by default.
+    /// The seconds a session with no open stream may stay idle before removal, 30 minutes by default.
     public var sessionIdleTimeout: TimeInterval = 30 * 60
 
-    /// A Boolean value indicating whether URLs the server hands out honor the `X-Forwarded-Host`, `X-Forwarded-Proto`, and `X-Forwarded-Port` headers.
+    /// A Boolean value indicating whether the server's URLs honor `X-Forwarded-*` headers.
     public var trustsForwardedHeaders: Bool = false
     
     /// Maximum allowed HTTP message size in bytes (defaults to 4 MB).
@@ -109,7 +109,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
             let existed = await sessionManager.existingSession(id: id) != nil
             let result = await authorize(token, session: sessionManager.session(id: id))
             if !existed, !result.isAuthorized {
-                // The check created this session, so a failed check removes it again.
+                // A failed check removes the session it created.
                 await sessionManager.removeSession(id: id)
             }
             return result
@@ -156,7 +156,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
             let isValid = await validateNewToken(token)
             if isValid {
                 await session.setAccessToken(token)
-                // Without expires_in we can't know exact lifetime; fall back to the default.
+                // A token without expires_in gets the default lifetime.
                 await session.setAccessTokenExpiry(Date().addingTimeInterval(TimeInterval(Self.defaultAccessTokenLifetime)))
 
                 // Fetch and store user info if we have OAuth configuration
