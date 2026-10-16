@@ -36,6 +36,14 @@ struct UploadLimitTests {
         _ = recv(fd, &buffer, buffer.count, 0)
     }
 
+    /// Waits up to three seconds until the store expects the given CID.
+    private func waitUntilExpected(_ cid: String, in store: PendingUploadStore) async throws {
+        let deadline = Date().addingTimeInterval(3)
+        while await !store.isExpectedOrArrived(cid: cid), Date() < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     /// Checks that an oversized chunked upload fails the waiting CID and leaves no temp file.
     @Test func oversizedUploadFailsTheCID() async throws {
         #if canImport(FoundationNetworking)
@@ -56,7 +64,7 @@ struct UploadLimitTests {
                 return error
             }
         }
-        try await Task.sleep(for: .milliseconds(100))
+        try await waitUntilExpected("big", in: store)
 
         let body = String(repeating: "x", count: 64)
         sendRaw("POST /mcp/uploads/big HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n40\r\n\(body)\r\n0\r\n\r\n", port: transport.port)
@@ -90,7 +98,7 @@ struct UploadLimitTests {
                 return error
             }
         }
-        try await Task.sleep(for: .milliseconds(100))
+        try await waitUntilExpected("declared", in: store)
 
         sendRaw("POST /mcp/uploads/declared HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 64\r\n\r\n", port: transport.port)
 
@@ -100,6 +108,41 @@ struct UploadLimitTests {
         }
         try #require(await !store.isExpectedOrArrived(cid: "declared"), "The CID is still waiting.")
         #expect(await waiter.value is UploadTooLargeError)
+        #endif
+    }
+
+    /// Checks that a client that disconnects mid-body fails the waiting CID and leaves no temp file.
+    @Test func disconnectMidBodyFailsTheCID() async throws {
+        #if canImport(FoundationNetworking)
+        // The test does not run on Linux.
+        return
+        #else
+        let transport = HTTPSSETransport(server: SmallUploadServer(), host: "127.0.0.1", port: 0)
+        try await transport.start()
+        defer { Task { try? await transport.stop() } }
+        let filesBefore = uploadTempFiles()
+
+        let store = transport.pendingUploadStore
+        let waiter = Task { () -> Error? in
+            do {
+                _ = try await store.waitForUpload(cid: "partial", progressToken: nil, sessionID: UUID())
+                return nil
+            } catch {
+                return error
+            }
+        }
+        try await waitUntilExpected("partial", in: store)
+
+        // The socket sends one chunk and closes without the last chunk.
+        sendRaw("POST /mcp/uploads/partial HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nabcd\r\n", port: transport.port)
+
+        let deadline = Date().addingTimeInterval(3)
+        while await store.isExpectedOrArrived(cid: "partial"), Date() < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try #require(await !store.isExpectedOrArrived(cid: "partial"), "The CID is still waiting.")
+        #expect(await waiter.value is UploadInterruptedError)
+        #expect(uploadTempFiles().subtracting(filesBefore).isEmpty)
         #endif
     }
 

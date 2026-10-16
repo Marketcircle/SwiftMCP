@@ -75,11 +75,17 @@ extension HTTPSSETransport {
 			throw error
 		}
 
-		if request.bodyLimit?.exceeded == true {
+		if let reason = request.bodyCutoff?.reason {
 			try? FileManager.default.removeItem(at: tempURL)
-			let limit = (server as? MCPFileUploadHandling)?.maxUploadSize ?? maxMessageSize
-			await pendingUploadStore.fail(cid: cid, error: UploadTooLargeError(limit: limit))
-			return RouteResponse(status: .payloadTooLarge)
+			switch reason {
+			case .tooLarge:
+				let limit = (server as? MCPFileUploadHandling)?.maxUploadSize ?? maxMessageSize
+				await pendingUploadStore.fail(cid: cid, error: UploadTooLargeError(limit: limit))
+				return RouteResponse(status: .payloadTooLarge)
+			case .disconnected:
+				await pendingUploadStore.fail(cid: cid, error: UploadInterruptedError())
+				return RouteResponse(status: .badRequest)
+			}
 		}
 
 		guard byteCount > 0 else {
@@ -144,5 +150,13 @@ struct UploadTooLargeError: LocalizedError {
 	/// A message that names the limit.
 	var errorDescription: String? {
 		"The upload is larger than \(limit) bytes."
+	}
+}
+
+/// An error that fails an upload whose client disconnected before the body ended.
+struct UploadInterruptedError: LocalizedError {
+	/// A message saying the upload ended early.
+	var errorDescription: String? {
+		"The upload ended before its body arrived."
 	}
 }

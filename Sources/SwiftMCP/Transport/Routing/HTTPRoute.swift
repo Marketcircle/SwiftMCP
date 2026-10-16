@@ -24,14 +24,17 @@ struct HTTPRoute: Sendable {
 		self.pathPattern = pathPattern
 		self.handler = { transport, streamingRequest in
 			let body = await Body.collect(from: streamingRequest.body)
-			if Body.isBuffered, streamingRequest.bodyLimit?.exceeded == true {
-				return RouteResponse(status: .payloadTooLarge)
+			if Body.isBuffered, let reason = streamingRequest.bodyCutoff?.reason {
+				switch reason {
+				case .tooLarge: return RouteResponse(status: .payloadTooLarge)
+				case .disconnected: return RouteResponse(status: .badRequest)
+				}
 			}
 			let request = HTTPRouteRequest<Body>(
 				method: streamingRequest.method, uri: streamingRequest.uri, path: streamingRequest.path,
 				headers: streamingRequest.headers, body: body,
 				pathParams: streamingRequest.pathParams, queryParams: streamingRequest.queryParams,
-				bodyLimit: streamingRequest.bodyLimit
+				bodyCutoff: streamingRequest.bodyCutoff
 			)
 			return try await handler(transport, request)
 		}

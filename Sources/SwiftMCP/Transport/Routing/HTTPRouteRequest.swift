@@ -29,8 +29,8 @@ public struct HTTPRouteRequest<Body: Sendable>: Sendable {
 	/// For example, `?tag=a&tag=b` yields `[("tag", "a"), ("tag", "b")]`.
 	public let queryParams: [(String, String)]
 
-	/// The flag the HTTP handler raises when a streamed body passes its size limit.
-	var bodyLimit: BodyLimitFlag? = nil
+	/// The record of why a streamed body ended early, filled in by the HTTP handler.
+	var bodyCutoff: BodyCutoff? = nil
 
 	// MARK: - Convenience
 
@@ -53,20 +53,32 @@ public struct HTTPRouteRequest<Body: Sendable>: Sendable {
 	}
 }
 
-/// A flag that marks a streamed request body cut off at its size limit.
-final class BodyLimitFlag: @unchecked Sendable {
-	/// The lock that guards ``storedExceeded``.
-	private let lock = NSLock()
-	/// The backing value of ``exceeded``.
-	private var storedExceeded = false
-
-	/// A Boolean value indicating whether the body passed its size limit.
-	var exceeded: Bool {
-		lock.withLock { storedExceeded }
+/// A record of why a streamed request body ended early.
+final class BodyCutoff: @unchecked Sendable {
+	/// A reason a streamed body ends early.
+	enum Reason: Sendable {
+		/// The body passed its size limit.
+		case tooLarge
+		/// The client disconnected before the body ended.
+		case disconnected
 	}
 
-	/// Records that the body passed its size limit.
-	func raise() {
-		lock.withLock { storedExceeded = true }
+	/// The lock that guards ``storedReason``.
+	private let lock = NSLock()
+	/// The backing value of ``reason``.
+	private var storedReason: Reason?
+
+	/// The reason the body ended early, or `nil` if the body arrived whole.
+	var reason: Reason? {
+		lock.withLock { storedReason }
+	}
+
+	/// Records the reason the body ended early, keeping the first one.
+	func record(_ reason: Reason) {
+		lock.withLock {
+			if storedReason == nil {
+				storedReason = reason
+			}
+		}
 	}
 }
