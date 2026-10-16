@@ -781,6 +781,31 @@ struct HTTPTransportTests {
 		#expect(await transport.sessionManager.sessions.isEmpty)
 	}
 
+	/// Checks that a rejected token sent with an open session's ID leaves that session in place.
+	@Test("Failed authorization keeps an existing session")
+	func failedAuthorizationKeepsExistingSession() async throws {
+		let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
+		transport.authorizationHandler = { $0 == "good" ? .authorized : .unauthorized("Bad token") }
+		try await transport.start()
+		defer { Task { try? await transport.stop() } }
+		let session = URLSession(configuration: .ephemeral)
+
+		var request = URLRequest(url: URL(string: "http://127.0.0.1:\(transport.port)/mcp")!)
+		request.httpMethod = "POST"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		request.setValue("application/json", forHTTPHeaderField: "Accept")
+		request.setValue("Bearer good", forHTTPHeaderField: "Authorization")
+		request.httpBody = try encode(initializeRequest())
+		let (_, first) = try await session.data(for: request)
+		let sessionID = try #require((first as? HTTPURLResponse)?.value(forHTTPHeaderField: "Mcp-Session-Id"))
+
+		request.setValue(sessionID, forHTTPHeaderField: "Mcp-Session-Id")
+		request.setValue("Bearer bad", forHTTPHeaderField: "Authorization")
+		let (_, second) = try await session.data(for: request)
+		#expect((second as? HTTPURLResponse)?.statusCode == 401)
+		#expect(await transport.sessionManager.existingSession(id: try #require(UUID(uuidString: sessionID))) != nil)
+	}
+
 	/// Checks that a new session past the cap gets a 503 and the open sessions stay.
 	@Test("POST /mcp: a session past the cap returns 503")
 	func sessionCapRefusesNewSessions() async throws {

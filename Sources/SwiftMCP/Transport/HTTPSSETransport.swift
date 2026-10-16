@@ -106,13 +106,10 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
 
         // 1. If we have a session ID, check token against session-stored value
         if let id = sessionID {
-            let existed = await sessionManager.existingSession(id: id) != nil
-            let result = await authorize(token, session: sessionManager.session(id: id))
-            if !existed, !result.isAuthorized {
-                // A failed check removes the session it created.
-                await sessionManager.removeSession(id: id)
+            if let session = await sessionManager.existingSession(id: id) {
+                return await authorize(token, session: session)
             }
-            return result
+            return await authorizeNewSession(id: id, token: token)
         }
 
         // 2. If we don't have a sessionID, see if we can locate a session by token.
@@ -140,6 +137,31 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         return authorizationHandler(token)
     }
 
+    /// Authorizes a request for a session that does not exist yet, and creates the session only when its token passes.
+    private func authorizeNewSession(id: UUID, token: String?) async -> AuthorizationResult {
+        guard let token else {
+            if oauthConfiguration != nil {
+                return .unauthorized("Authentication required")
+            }
+            return authorizationHandler(nil)
+        }
+        guard await validateNewToken(token) else {
+            return .unauthorized("Invalid token - token exchange required")
+        }
+        await bind(token, to: sessionManager.session(id: id))
+        return .authorized
+    }
+
+    /// Stores a validated token on the session, with an expiry and user info under OAuth.
+    private func bind(_ token: String, to session: Session) async {
+        await session.setAccessToken(token)
+        if let oauthConfiguration {
+            // A token without expires_in gets the default lifetime.
+            await session.setAccessTokenExpiry(Date().addingTimeInterval(TimeInterval(Self.defaultAccessTokenLifetime)))
+            await sessionManager.fetchAndStoreUserInfo(for: session.id, oauthConfiguration: oauthConfiguration)
+        }
+    }
+
     /// Authorizes a token against a session that already exists, without creating one.
     func authorize(_ token: String?, session: Session) async -> AuthorizationResult {
         if let rejection = rejectJWE(token) {
@@ -161,15 +183,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
             // First time we see a token for this session - validate it before accepting
             let isValid = await validateNewToken(token)
             if isValid {
-                await session.setAccessToken(token)
-
-                // Fetch and store user info if we have OAuth configuration
-                if let oauthConfiguration = oauthConfiguration {
-                    // A token without expires_in gets the default lifetime.
-                    await session.setAccessTokenExpiry(Date().addingTimeInterval(TimeInterval(Self.defaultAccessTokenLifetime)))
-                    await sessionManager.fetchAndStoreUserInfo(for: session.id, oauthConfiguration: oauthConfiguration)
-                }
-
+                await bind(token, to: session)
                 return .authorized
             } else {
                 return .unauthorized("Invalid token - token exchange required")
