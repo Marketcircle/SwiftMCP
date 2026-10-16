@@ -5,6 +5,7 @@ import Testing
 /// Tests how the HTTP transport caps open connections.
 @Suite("Connection limit", .serialized)
 struct ConnectionLimitTests {
+    #if canImport(Darwin)
     /// Opens a raw socket to the port and returns its descriptor.
     private func connectSocket(port: Int) -> Int32 {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
@@ -30,6 +31,7 @@ struct ConnectionLimitTests {
         let count = recv(fd, &buffer, buffer.count, 0)
         return count < 0 && errno == ECONNRESET ? 0 : count
     }
+    #endif
 
     /// Checks that a connection past the cap closes without an answer, and that a freed slot takes a new one.
     @Test func connectionPastTheCapIsClosed() async throws {

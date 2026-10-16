@@ -61,13 +61,13 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// The lifetime in seconds of an access token that comes without `expires_in`.
     static let defaultAccessTokenLifetime = 60 * 60
 
-    /// The seconds a client may go quiet while the server reads its request, from connecting to the first head and between body chunks, 30 by default. Zero or less turns the timeout off.
+    /// The seconds a client may go quiet while the server reads its request, from connecting to the first head and between body chunks, 30 by default. Zero or less turns the timeout off. A keep-alive connection that sits idle between requests has no timeout.
     public var requestReadTimeout: TimeInterval = 30
 
-    /// The seconds one request body may take in total, 300 by default. Zero or less turns the deadline off.
+    /// The seconds one request body may take in total, uploads included, 300 by default. Zero or less turns the deadline off.
     public var requestBodyDeadline: TimeInterval = 300
 
-    /// The most connections the server keeps open at once, 256 by default and never more than half the open-file limit. Zero or less removes the cap.
+    /// The most connections the server keeps open at once, 256 by default and never more than half the open-file limit. Zero or less removes the cap. The server reads it in ``start()``.
     public var maxConnections: Int = 256
 
     /// The most sessions the server keeps at once, 64 by default.
@@ -633,7 +633,12 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     private func effectiveConnectionLimit() -> Int {
         guard maxConnections > 0 else { return .max }
         var limit = rlimit()
-        guard getrlimit(RLIMIT_NOFILE, &limit) == 0 else { return maxConnections }
+        #if os(Linux)
+        let resource = __rlimit_resource_t(RLIMIT_NOFILE.rawValue)
+        #else
+        let resource = RLIMIT_NOFILE
+        #endif
+        guard getrlimit(resource, &limit) == 0 else { return maxConnections }
         let half = max(Int(clamping: limit.rlim_cur / 2), 1)
         guard half < maxConnections else { return maxConnections }
         logger.notice("Capping connections at \(half), half the open-file limit")
@@ -673,5 +678,5 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     }
 }
 
-/// An error that refuses a connection past the connection cap.
+/// The error that fails the initializer of a connection past the connection cap.
 struct ConnectionLimitError: Error {}

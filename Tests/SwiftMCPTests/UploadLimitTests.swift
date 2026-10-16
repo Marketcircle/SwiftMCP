@@ -18,6 +18,7 @@ struct UploadLimitTests {
         return Set(names.filter { $0.hasPrefix("mcp-upload-") && !$0.hasPrefix("mcp-upload-test-") })
     }
 
+    #if canImport(Darwin)
     /// Sends the raw request to the port and returns the first answer bytes, or an empty string after one second.
     @discardableResult
     private func sendRaw(_ request: String, port: Int) -> String {
@@ -39,6 +40,7 @@ struct UploadLimitTests {
         let count = recv(fd, &buffer, buffer.count, 0)
         return count > 0 ? String(decoding: buffer[0..<count], as: UTF8.self) : ""
     }
+    #endif
 
     /// Waits up to three seconds until the store expects the given CID.
     private func waitUntilExpected(_ cid: String, in store: PendingUploadStore) async throws {
@@ -112,6 +114,42 @@ struct UploadLimitTests {
         }
         try #require(await !store.isExpectedOrArrived(cid: "declared"), "The CID is still waiting.")
         #expect(await waiter.value is UploadTooLargeError)
+        #endif
+    }
+
+    /// Checks that an upload rejected by its Content-Length gets exactly one response before the socket closes.
+    @Test func rejectedUploadGetsOneResponse() async throws {
+        #if canImport(FoundationNetworking)
+        // The test does not run on Linux.
+        return
+        #else
+        let transport = HTTPSSETransport(server: SmallUploadServer(), host: "127.0.0.1", port: 0)
+        try await transport.start()
+        defer { Task { try? await transport.stop() } }
+
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        defer { close(fd) }
+        var timeout = timeval(tv_sec: 1, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(UInt16(transport.port).bigEndian)
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+        _ = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+        }
+        let request = "POST /mcp/uploads/huge HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 99999999\r\n\r\n"
+        _ = request.withCString { send(fd, $0, strlen($0), 0) }
+
+        var answer = ""
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = recv(fd, &buffer, buffer.count, 0)
+            guard count > 0 else { break }
+            answer += String(decoding: buffer[0..<count], as: UTF8.self)
+        }
+        #expect(answer.hasPrefix("HTTP/1.1 413"))
+        #expect(answer.components(separatedBy: "HTTP/1.1 ").count == 2)
         #endif
     }
 

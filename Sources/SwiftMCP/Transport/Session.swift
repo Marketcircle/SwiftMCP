@@ -109,6 +109,12 @@ public actor Session {
         return true
     }
 
+    /// Finishes the stored stream continuation and frees the slot for a new stream.
+    func releaseSSEContinuation() {
+        sseContinuation?.finish()
+        sseContinuation = nil
+    }
+
     // MARK: - Convenience Mutators
 
     /// Update the access token stored for this session.
