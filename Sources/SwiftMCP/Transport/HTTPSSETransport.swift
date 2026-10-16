@@ -146,21 +146,27 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
             return rejection
         }
         if let stored = await session.accessToken {
-            if stored == token, (await session.accessTokenExpiry ?? Date.distantFuture) > Date() {
-                return .authorized
-            } else {
+            guard stored == token else {
                 return .unauthorized("Invalid or expired token")
             }
+            // Without OAuth, the handler decides every request.
+            guard oauthConfiguration != nil else {
+                return authorizationHandler(token)
+            }
+            if (await session.accessTokenExpiry ?? Date.distantFuture) > Date() {
+                return .authorized
+            }
+            return .unauthorized("Invalid or expired token")
         } else if let token {
             // First time we see a token for this session - validate it before accepting
             let isValid = await validateNewToken(token)
             if isValid {
                 await session.setAccessToken(token)
-                // A token without expires_in gets the default lifetime.
-                await session.setAccessTokenExpiry(Date().addingTimeInterval(TimeInterval(Self.defaultAccessTokenLifetime)))
 
                 // Fetch and store user info if we have OAuth configuration
                 if let oauthConfiguration = oauthConfiguration {
+                    // A token without expires_in gets the default lifetime.
+                    await session.setAccessTokenExpiry(Date().addingTimeInterval(TimeInterval(Self.defaultAccessTokenLifetime)))
                     await sessionManager.fetchAndStoreUserInfo(for: session.id, oauthConfiguration: oauthConfiguration)
                 }
 
