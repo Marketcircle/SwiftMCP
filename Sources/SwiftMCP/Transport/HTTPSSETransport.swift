@@ -50,6 +50,9 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// Flag to determine whether to serve OpenAPI endpoints.
     public var serveOpenAPI: Bool = false
 
+    /// The lifetime in seconds of an access token that comes without `expires_in`.
+    static let defaultAccessTokenLifetime = 60 * 60
+
     /// A Boolean value indicating whether URLs the server hands out honor the `X-Forwarded-Host`, `X-Forwarded-Proto`, and `X-Forwarded-Port` headers.
     public var trustsForwardedHeaders: Bool = false
     
@@ -135,8 +138,8 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
             let isValid = await validateNewToken(token)
             if isValid {
                 await session.setAccessToken(token)
-                // Without expires_in we can't know exact lifetime; fall back to 24 h.
-                await session.setAccessTokenExpiry(Date().addingTimeInterval(24 * 60 * 60))
+                // Without expires_in we can't know exact lifetime; fall back to the default.
+                await session.setAccessTokenExpiry(Date().addingTimeInterval(TimeInterval(Self.defaultAccessTokenLifetime)))
 
                 // Fetch and store user info if we have OAuth configuration
                 if let oauthConfiguration = oauthConfiguration {
