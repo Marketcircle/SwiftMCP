@@ -18,12 +18,15 @@ struct UploadLimitTests {
         return Set(names.filter { $0.hasPrefix("mcp-upload-") && !$0.hasPrefix("mcp-upload-test-") })
     }
 
-    /// Sends the raw request to the port and returns once the server answers or one second passes.
-    private func sendRaw(_ request: String, port: Int) {
+    /// Sends the raw request to the port and returns the first answer bytes, or an empty string after one second.
+    @discardableResult
+    private func sendRaw(_ request: String, port: Int) -> String {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         defer { close(fd) }
         var timeout = timeval(tv_sec: 1, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        var noSigPipe: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = in_port_t(UInt16(port).bigEndian)
@@ -33,7 +36,8 @@ struct UploadLimitTests {
         }
         _ = request.withCString { send(fd, $0, strlen($0), 0) }
         var buffer = [UInt8](repeating: 0, count: 1024)
-        _ = recv(fd, &buffer, buffer.count, 0)
+        let count = recv(fd, &buffer, buffer.count, 0)
+        return count > 0 ? String(decoding: buffer[0..<count], as: UTF8.self) : ""
     }
 
     /// Waits up to three seconds until the store expects the given CID.
@@ -153,7 +157,7 @@ struct UploadLimitTests {
         return
         #else
         let transport = HTTPSSETransport(server: SmallUploadServer(), host: "127.0.0.1", port: 0)
-        transport.bodyReadTimeout = 0.3
+        transport.requestReadTimeout = 0.3
         try await transport.start()
         defer { Task { try? await transport.stop() } }
 
@@ -170,8 +174,9 @@ struct UploadLimitTests {
 
         // The socket sends one chunk, then waits for the server to close it.
         let start = Date()
-        sendRaw("POST /mcp/uploads/stalled HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nabcd\r\n", port: transport.port)
+        let answer = sendRaw("POST /mcp/uploads/stalled HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nabcd\r\n", port: transport.port)
         #expect(Date().timeIntervalSince(start) < 0.9)
+        #expect(answer.hasPrefix("HTTP/1.1 408"))
 
         let deadline = Date().addingTimeInterval(3)
         while await store.isExpectedOrArrived(cid: "stalled"), Date() < deadline {
