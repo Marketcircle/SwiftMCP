@@ -835,7 +835,16 @@ public final actor MCPServerProxy: Sendable {
                 // Ignore legacy endpoint events for streamable /mcp mode.
                 return
             }
-            if let url = URL(string: data) {
+            let sseURL: URL? = if case .sse(let sseConfig) = config { sseConfig.url } else { nil }
+            if let url = URL(string: data, relativeTo: sseURL)?.absoluteURL {
+                if let sseURL, !url.hasSameOrigin(as: sseURL) {
+                    logger.error("Rejected an endpoint on another origin")
+                    if let continuation = endpointContinuation {
+                        endpointContinuation = nil
+                        continuation.resume(throwing: MCPServerProxyError.communicationError("The server announced an endpoint on another origin"))
+                    }
+                    return
+                }
                 endpointURL = url
                 if let continuation = endpointContinuation {
                     endpointContinuation = nil
