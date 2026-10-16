@@ -279,7 +279,7 @@ extension HTTPSSETransport {
 				   tokenResponse.tokenType.lowercased() == "bearer",
 				   await config.validate(token: tokenResponse.accessToken) {
 
-					let expiresIn = tokenResponse.expiresIn ?? (24 * 60 * 60)
+					let expiresIn = tokenResponse.expiresIn ?? Self.defaultAccessTokenLifetime
 
 					await sessionManager.session(id: sessionUUID).work { s in
 						await s.setAccessToken(tokenResponse.accessToken)
