@@ -14,12 +14,14 @@ struct BoundedLineReaderTests {
             try? writer.close()
         }
 
-        var reader = BoundedLineReader(fileDescriptor: pipe.fileHandleForReading.fileDescriptor, limit: limit)
-        var result: [BoundedLineReader.Line] = []
-        while let line = reader.next() {
-            result.append(line)
+        return withExtendedLifetime(pipe) {
+            Array(IteratorSequence(BoundedLineReader(fileDescriptor: pipe.fileHandleForReading.fileDescriptor, limit: limit)))
         }
-        return result
+    }
+
+    /// Checks that a Windows line ending comes back without its carriage return.
+    @Test func carriageReturnIsStripped() throws {
+        #expect(try lines(of: "one\r\ntwo\r", limit: 10) == [.text(Data("one".utf8)), .text(Data("two".utf8))])
     }
 
     /// Checks that lines within the limit come back whole and in order.
