@@ -90,7 +90,7 @@ public final class StdioTransport: Transport, @unchecked Sendable {
 
     /// Reads stdin line by line and handles each message until the transport stops.
     ///
-    /// A line over ``maxMessageSize`` gets a parse error instead of being handled.
+    /// A line over ``maxMessageSize`` gets a parse error.
     private func processInput() async throws {
         var reader = BoundedLineReader(fileDescriptor: STDIN_FILENO, limit: maxMessageSize)
         while await state.isCurrentlyRunning() {

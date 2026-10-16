@@ -4,7 +4,7 @@
 
 import Foundation
 
-/// A reader that splits the bytes of a file descriptor into lines and drops every line longer than a limit.
+/// A reader that splits a file descriptor's bytes into lines and drops lines over a limit.
 struct BoundedLineReader {
     /// One line the reader returns.
     enum Line: Equatable {
@@ -26,7 +26,7 @@ struct BoundedLineReader {
     /// A Boolean value indicating whether the reader is dropping bytes until the next newline.
     private var discarding = false
 
-    /// Creates a reader for the given file descriptor that drops lines longer than the given number of bytes.
+    /// Creates a reader for the given file descriptor and line limit in bytes.
     init(fileDescriptor: Int32, limit: Int) {
         self.fileDescriptor = fileDescriptor
         self.limit = limit
