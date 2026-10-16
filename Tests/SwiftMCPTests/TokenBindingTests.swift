@@ -35,6 +35,16 @@ struct TokenBindingTests {
         #expect(await !transport.authorize("good", sessionID: id).isAuthorized)
     }
 
+    /// Checks that a sessionless request with a bound token stops working once the handler rejects it.
+    @Test func handlerDecidesSessionlessRequests() async {
+        let transport = makeTransport()
+        #expect(await transport.authorize("good", sessionID: UUID()).isAuthorized)
+        #expect(await transport.authorize("good", sessionID: nil).isAuthorized)
+
+        transport.authorizationHandler = { _ in .unauthorized("Rotated") }
+        #expect(await !transport.authorize("good", sessionID: nil).isAuthorized)
+    }
+
     /// Checks that the constant-time compare matches only identical strings.
     @Test func constantTimeCompare() {
         #expect("token".constantTimeEquals("token"))
