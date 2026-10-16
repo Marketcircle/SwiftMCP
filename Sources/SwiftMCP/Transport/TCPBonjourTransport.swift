@@ -5,6 +5,8 @@ import Logging
 import Network
 
 /// A TCP transport that advertises via Bonjour and exchanges newline-delimited JSON-RPC.
+///
+/// The transport has no authorization. Every process that reaches the listener can call every tool.
 public final class TCPBonjourTransport: Transport, @unchecked Sendable {
     /// Base DNS-SD service type for MCP over TCP.
     public static let serviceType = "_mcp._tcp"
