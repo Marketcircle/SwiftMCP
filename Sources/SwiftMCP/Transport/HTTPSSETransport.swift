@@ -426,6 +426,8 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
                     }
                 case .ping:
                     await self.sessionManager.forEachSession { session in
+                        // The ping goes only to sessions with an open stream.
+                        guard await session.hasActiveConnection else { return }
                         Task {
                             let ping = JSONRPCMessage.request(id: .string(UUID().uuidString), method: "ping")
                             do {
