@@ -6,6 +6,6 @@ extension AsyncStream<Data>: RouteBody {
 		stream
 	}
 
-	/// A Boolean value indicating whether the handler gets the whole body at once, which is false for a stream.
+	/// A Boolean value indicating whether the handler gets the whole body at once.
 	static var isBuffered: Bool { false }
 }

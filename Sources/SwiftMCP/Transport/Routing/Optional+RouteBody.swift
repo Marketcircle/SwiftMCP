@@ -10,6 +10,6 @@ extension Optional: RouteBody where Wrapped == Data {
 		return collected.isEmpty ? nil : collected
 	}
 
-	/// A Boolean value indicating whether the handler gets the whole body at once, which is true for collected data.
+	/// A Boolean value indicating whether the handler gets the whole body at once.
 	static var isBuffered: Bool { true }
 }

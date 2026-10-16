@@ -449,7 +449,7 @@ struct HTTPTransportTests {
 	}
 
 	#if canImport(Darwin)
-	/// Opens GET /sse on a raw socket and returns the socket plus the messages URL from the endpoint event.
+	/// Opens GET /sse on a raw socket with any extra header lines, and returns the socket plus the messages URL from the endpoint event.
 	private func openLegacySSESocket(baseURL: URL, extraHeaders: String = "") throws -> (fd: Int32, messagesURL: URL) {
 		let fd = socket(AF_INET, SOCK_STREAM, 0)
 		#expect(fd >= 0)
