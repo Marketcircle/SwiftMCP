@@ -58,6 +58,9 @@ public actor Session {
     /// URIs that this session has subscribed to for resource-updated notifications.
     internal var subscribedResourceURIs: Set<String> = []
 
+    /// The time of the most recent request on this session.
+    internal private(set) var lastActivity = Date()
+
     /// Creates a new session.
     /// - Parameters:
     ///   - id: The unique session identifier.
@@ -121,6 +124,11 @@ public actor Session {
     /// Update the channel associated with this session.
     public func setChannel(_ channel: Channel?) {
         self.channel = channel
+    }
+
+    /// Records that a request arrived on this session now.
+    func markActive() {
+        lastActivity = Date()
     }
 
     /// Update the userInfo stored for this session.
