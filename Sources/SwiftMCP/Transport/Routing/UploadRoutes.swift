@@ -56,6 +56,7 @@ extension HTTPSSETransport {
 			return RouteResponse(status: .internalServerError, body: Data("Failed to create temp file.".utf8))
 		}
 		guard let handle = FileHandle(forWritingAtPath: tempURL.path) else {
+			try? FileManager.default.removeItem(at: tempURL)
 			return RouteResponse(status: .internalServerError, body: Data("Failed to create temp file.".utf8))
 		}
 		var byteCount = 0
