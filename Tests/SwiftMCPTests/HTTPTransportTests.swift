@@ -612,9 +612,10 @@ struct HTTPTransportTests {
 
 	// MARK: - CORS
 
-	@Test("OPTIONS returns CORS headers")
+	@Test("OPTIONS returns CORS headers when origins are allowed")
 	func corsHeaders() async throws {
 		let (transport, baseURL) = try await startTransport()
+		transport.allowedOrigins = ["http://localhost:3000"]
 		defer { Task { try? await transport.stop() } }
 
 		let session = URLSession(configuration: .ephemeral)
@@ -627,6 +628,21 @@ struct HTTPTransportTests {
 		#expect(http.value(forHTTPHeaderField: "Access-Control-Allow-Methods")?.contains("POST") == true)
 		#expect(http.value(forHTTPHeaderField: "Access-Control-Allow-Headers")?.contains("Content-Type") == true)
 		#expect(http.value(forHTTPHeaderField: "Access-Control-Allow-Headers")?.contains("Mcp-Session-Id") == true)
+	}
+
+	/// Checks that OPTIONS answers 204 with no CORS headers when no origins are allowed.
+	@Test("OPTIONS returns no CORS headers by default")
+	func corsHeadersOffByDefault() async throws {
+		let (transport, baseURL) = try await startTransport()
+		defer { Task { try? await transport.stop() } }
+
+		var request = URLRequest(url: baseURL.appendingPathComponent("mcp"))
+		request.httpMethod = "OPTIONS"
+
+		let (_, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+		let http = response as! HTTPURLResponse
+		#expect(http.statusCode == 204)
+		#expect(http.value(forHTTPHeaderField: "Access-Control-Allow-Origin") == nil)
 	}
 
 	// MARK: - OpenAPI
