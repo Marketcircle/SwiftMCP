@@ -21,9 +21,12 @@ extension HTTPSSETransport {
 			return RouteResponse(status: .notFound, body: Data("File uploads not supported by this server.".utf8))
 		}
 
-		let sessionID = UUID(uuidString: request.sessionID ?? "")
-		if let sessionID, await sessionManager.existingSession(id: sessionID) == nil {
-			return .unknownSession
+		var sessionID: UUID?
+		if let header = request.sessionID {
+			guard let id = UUID(uuidString: header), await sessionManager.existingSession(id: id) != nil else {
+				return .unknownSession
+			}
+			sessionID = id
 		}
 
 		let token = request.bearerToken

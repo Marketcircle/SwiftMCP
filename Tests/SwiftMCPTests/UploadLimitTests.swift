@@ -118,7 +118,7 @@ struct UploadLimitTests {
         await transport.pendingUploadStore.expireEarlyArrivals(olderThan: -1)
     }
 
-    /// Checks that an upload naming an unknown session gets 404.
+    /// Checks that an upload naming an unknown or malformed session gets 404.
     @Test func uploadForUnknownSessionIsRejected() async throws {
         let transport = HTTPSSETransport(server: SmallUploadServer(), host: "127.0.0.1", port: 0)
         try await transport.start()
@@ -130,6 +130,10 @@ struct UploadLimitTests {
         request.httpBody = Data("tiny".utf8)
         let (_, response) = try await URLSession(configuration: .ephemeral).data(for: request)
         #expect((response as? HTTPURLResponse)?.statusCode == 404)
+
+        request.setValue("not-a-session", forHTTPHeaderField: "Mcp-Session-Id")
+        let (_, malformed) = try await URLSession(configuration: .ephemeral).data(for: request)
+        #expect((malformed as? HTTPURLResponse)?.statusCode == 404)
         #expect(await transport.sessionManager.sessions.isEmpty)
     }
 }
