@@ -42,7 +42,8 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
                     currentRequestBody = ""
 
                 case .body(let buffer):
-                    if let str = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) {
+                    if httpLogger.logLevel <= .trace,
+                       let str = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) {
                         currentRequestBody += str
                     }
 
@@ -66,7 +67,7 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
                     // For SSE connections, only log the initial response headers
                     if isSSEConnection {
                         var log = "HTTP/\(head.version.major).\(head.version.minor) \(head.status.code) \(head.status.reasonPhrase)\n"
-                        head.headers.forEach { log += "\($0.name): \($0.value)\n" }
+                        log += Self.headerLines(head.headers)
                         log += "\n"
                         sseLogger.info("Connection Established:\n\(log)")
                     } else {
@@ -81,8 +82,8 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
                         if let str = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) {
                             if isSSEConnection {
                                 // For SSE, log each message immediately
-                                sseLogger.trace("SSE: \(str)")
-                            } else {
+                                sseLogger.trace("SSE: \(str.truncatedForLog)")
+                            } else if httpLogger.logLevel <= .trace {
                                 currentResponseBody += str
                             }
                         }
@@ -108,11 +109,11 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
         guard let head = currentRequestHead else { return }
 
         var log = "\(head.method) \(head.uri) HTTP/\(head.version.major).\(head.version.minor)\n"
-        head.headers.forEach { log += "\($0.name): \($0.value)\n" }
+        log += Self.headerLines(head.headers)
         log += "\n"  // Empty line after headers
 
         if !currentRequestBody.isEmpty {
-            log += currentRequestBody + "\n"
+            log += currentRequestBody.truncatedForLog + "\n"
         }
 
         httpLogger.trace("\(log)")
@@ -122,14 +123,25 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
         guard let head = currentResponseHead else { return }
 
         var log = "HTTP/\(head.version.major).\(head.version.minor) \(head.status.code) \(head.status.reasonPhrase)\n"
-        head.headers.forEach { log += "\($0.name): \($0.value)\n" }
+        log += Self.headerLines(head.headers)
         log += "\n"  // Empty line after headers
 
         if !currentResponseBody.isEmpty {
-            log += currentResponseBody + "\n"
+            log += currentResponseBody.truncatedForLog + "\n"
         }
 
         httpLogger.trace("\(log)")
+    }
+
+    /// The lowercase names of the headers whose values a log line masks.
+    static let maskedHeaderNames: Set<String> = ["authorization", "proxy-authorization", "cookie", "set-cookie"]
+
+    /// Returns one `name: value` line per header, with credential values masked.
+    static func headerLines<Headers: Sequence>(_ headers: Headers) -> String where Headers.Element == (name: String, value: String) {
+        headers.map { name, value in
+            let shown = maskedHeaderNames.contains(name.lowercased()) ? "<redacted>" : value
+            return "\(name): \(shown)\n"
+        }.joined()
     }
 
     func handlerAdded(context: ChannelHandlerContext) {

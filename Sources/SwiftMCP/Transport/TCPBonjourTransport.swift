@@ -354,7 +354,7 @@ public final class TCPBonjourTransport: Transport, @unchecked Sendable {
         }
 
         let string = String(data: data, encoding: .utf8) ?? ""
-        logger.trace("TCP OUT:\n\n\(string)")
+        logger.trace("TCP OUT:\n\n\(string.truncatedForLog)")
 
         var out = data
         let newline = "\n".data(using: .utf8) ?? Data()
@@ -462,7 +462,7 @@ public final class TCPBonjourTransport: Transport, @unchecked Sendable {
             return
         }
 
-        logger.trace("TCP IN:\n\n\(line)")
+        logger.trace("TCP IN:\n\n\(line.truncatedForLog)")
 
         await session.work { _ in
             do {
