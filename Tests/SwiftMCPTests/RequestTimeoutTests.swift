@@ -14,6 +14,7 @@ struct RequestTimeoutTests {
         return transport
     }
 
+    #if canImport(Darwin)
     /// Opens a raw socket to the port with a one-second receive timeout and no SIGPIPE.
     private func connectSocket(port: Int) -> Int32 {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
@@ -30,6 +31,7 @@ struct RequestTimeoutTests {
         }
         return fd
     }
+    #endif
 
     /// Checks that a connection that never sends a request head is closed.
     @Test func silentConnectionTimesOut() async throws {

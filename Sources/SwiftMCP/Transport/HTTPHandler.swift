@@ -39,13 +39,20 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
 
     // MARK: - Channel Handler
 
-    /// Ends a body that is still streaming and passes the event on.
+    /// Starts waiting for the first request head when the handler joins a channel that is already active.
+    func handlerAdded(context: ChannelHandlerContext) {
+        if context.channel.isActive {
+            restartReadTimer(context: context)
+        }
+    }
+
     /// Starts waiting for the first request head and passes the event on.
     func channelActive(context: ChannelHandlerContext) {
         restartReadTimer(context: context)
         context.fireChannelActive()
     }
 
+    /// Ends a body that is still streaming and passes the event on.
     func channelInactive(context: ChannelHandlerContext) {
         cancelRequestTimers()
         if case .streaming(_, let continuation, _) = requestState {
@@ -85,12 +92,14 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
                 cancelRequestTimers()
                 rejectOversizedRequest(context: context)
                 requestState = .rejected
-                // The route still runs, with an empty and flagged body.
-                let (stream, continuation) = AsyncStream<Data>.makeStream()
-                let bodyCutoff = BodyCutoff()
-                bodyCutoff.record(.tooLarge)
-                continuation.finish()
-                dispatchRoute(context: context, head: head, bodyStream: stream, bodyCutoff: bodyCutoff)
+                // An upload route still runs, with an empty and flagged body.
+                if head.uri.hasPrefix("/mcp/uploads") {
+                    let (stream, continuation) = AsyncStream<Data>.makeStream()
+                    let bodyCutoff = BodyCutoff()
+                    bodyCutoff.record(.tooLarge)
+                    continuation.finish()
+                    dispatchRoute(context: context, head: head, bodyStream: stream, bodyCutoff: bodyCutoff)
+                }
                 return
             }
 
@@ -180,7 +189,14 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
 
             // The route answers only when the handler has not already answered this request.
             let claimed = (try? await channel.eventLoop.submit { self.claimResponse(for: requestNumber) }.get()) ?? false
-            guard claimed else { return }
+            guard claimed else {
+                // A refused stream gives its session's stream slot back.
+                if response.bodyStream != nil, let id = response.streamSessionID,
+                   let session = await self.transport.sessionManager.existingSession(id: id) {
+                    await session.releaseSSEContinuation()
+                }
+                return
+            }
 
             // For SSE streaming responses, register the NIO channel.
             // Legacy /sse does not emit Mcp-Session-Id, so prefer the explicit streamSessionID.
@@ -281,9 +297,9 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
 
     /// Ends a request whose body is streaming with a 408, and closes the connection.
     private func timeOutRequest(channel: Channel) {
-        logger.warning("Closing a connection whose request went quiet or ran too long")
         cancelRequestTimers()
         if case .streaming(_, let continuation, _) = requestState {
+            logger.warning("Closing a connection whose request body went quiet or ran too long")
             currentBodyCutoff?.record(.timedOut)
             continuation.finish()
             requestState = .rejected
@@ -292,6 +308,8 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
                 headers.add(name: "Connection", value: "close")
                 sendResponse(channel: channel, status: .requestTimeout, headers: headers)
             }
+        } else {
+            logger.info("Closing a connection that sent no request in time")
         }
         channel.close(promise: nil)
     }
