@@ -21,9 +21,9 @@ extension HTTPSSETransport {
 			return RouteResponse(status: .notFound, body: Data("File uploads not supported by this server.".utf8))
 		}
 
-		let sessionID = UUID(uuidString: request.sessionID ?? "") ?? UUID()
-		if await sessionManager.existingSession(id: sessionID) == nil, let refusal = await sessionLimitResponse() {
-			return refusal
+		let sessionID = UUID(uuidString: request.sessionID ?? "")
+		if let sessionID, await sessionManager.existingSession(id: sessionID) == nil {
+			return .unknownSession
 		}
 
 		let token = request.bearerToken
@@ -86,8 +86,9 @@ extension HTTPSSETransport {
 
 		// Send progress notification
 		let totalBytes = byteCount
-		if let progressToken = await pendingUploadStore.progressToken(for: cid) {
-			let session = await sessionManager.session(id: sessionID)
+		if let sessionID,
+		   let progressToken = await pendingUploadStore.progressToken(for: cid),
+		   let session = await sessionManager.existingSession(id: sessionID) {
 			await session.work { session in
 				await session.sendProgressNotification(
 					progressToken: progressToken,
@@ -124,10 +125,11 @@ extension HTTPSSETransport {
 		}
 
 		logger.info("CID upload \(statusString): \(cid) (\(byteCount) bytes)")
-		return RouteResponse(status: .ok, headers: [
-			("Content-Type", "application/json"),
-			("Mcp-Session-Id", sessionID.uuidString)
-		], body: jsonData)
+		var headers = [("Content-Type", "application/json")]
+		if let sessionID {
+			headers.append(("Mcp-Session-Id", sessionID.uuidString))
+		}
+		return RouteResponse(status: .ok, headers: headers, body: jsonData)
 	}
 }
 

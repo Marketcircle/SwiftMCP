@@ -9,8 +9,8 @@ final class SmallUploadServer: MCPFileUploadHandling {
     var maxUploadSize: Int { 16 }
 }
 
-/// Tests what happens to an upload that passes the size limit.
-@Suite("Upload size limit")
+/// Tests the upload route's limits on size and sessions.
+@Suite("Upload limits")
 struct UploadLimitTests {
     /// Returns the names of the upload temp files the route writes.
     private func uploadTempFiles() -> Set<String> {
@@ -69,5 +69,35 @@ struct UploadLimitTests {
         #expect(await waiter.value is UploadTooLargeError)
         #expect(uploadTempFiles() == filesBefore)
         #endif
+    }
+
+    /// Checks that an upload without a session header creates no session.
+    @Test func uploadWithoutSessionCreatesNone() async throws {
+        let transport = HTTPSSETransport(server: SmallUploadServer(), host: "127.0.0.1", port: 0)
+        try await transport.start()
+        defer { Task { try? await transport.stop() } }
+
+        var request = URLRequest(url: try #require(URL(string: "http://127.0.0.1:\(transport.port)/mcp/uploads/small")))
+        request.httpMethod = "POST"
+        request.httpBody = Data("tiny".utf8)
+        let (_, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+        #expect((response as? HTTPURLResponse)?.statusCode == 200)
+        #expect(await transport.sessionManager.sessions.isEmpty)
+        await transport.pendingUploadStore.expireEarlyArrivals(olderThan: -1)
+    }
+
+    /// Checks that an upload naming an unknown session gets 404.
+    @Test func uploadForUnknownSessionIsRejected() async throws {
+        let transport = HTTPSSETransport(server: SmallUploadServer(), host: "127.0.0.1", port: 0)
+        try await transport.start()
+        defer { Task { try? await transport.stop() } }
+
+        var request = URLRequest(url: try #require(URL(string: "http://127.0.0.1:\(transport.port)/mcp/uploads/small")))
+        request.httpMethod = "POST"
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "Mcp-Session-Id")
+        request.httpBody = Data("tiny".utf8)
+        let (_, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+        #expect((response as? HTTPURLResponse)?.statusCode == 404)
+        #expect(await transport.sessionManager.sessions.isEmpty)
     }
 }
