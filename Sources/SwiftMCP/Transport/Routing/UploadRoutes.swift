@@ -22,6 +22,9 @@ extension HTTPSSETransport {
 		}
 
 		let sessionID = UUID(uuidString: request.sessionID ?? "") ?? UUID()
+		if await sessionManager.existingSession(id: sessionID) == nil, let refusal = await sessionLimitResponse() {
+			return refusal
+		}
 
 		let token = request.bearerToken
 

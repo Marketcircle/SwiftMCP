@@ -111,6 +111,9 @@ extension HTTPSSETransport {
 
 		let token = request.bearerToken
 		let sessionID = UUID(uuidString: request.sessionID ?? "")
+		if let sessionID, await sessionManager.existingSession(id: sessionID) == nil, let refusal = await sessionLimitResponse() {
+			return refusal
+		}
 
 		if case .unauthorized(let message) = await authorize(token, sessionID: sessionID) {
 			let err = JSONRPCMessage.errorResponse(id: nil, error: .init(code: -32000, message: "Unauthorized: \(message)"))
