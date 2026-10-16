@@ -71,6 +71,38 @@ struct UploadLimitTests {
         #endif
     }
 
+    /// Checks that an upload whose Content-Length passes the limit fails the waiting CID.
+    @Test func oversizedContentLengthFailsTheCID() async throws {
+        #if canImport(FoundationNetworking)
+        // The test does not run on Linux.
+        return
+        #else
+        let transport = HTTPSSETransport(server: SmallUploadServer(), host: "127.0.0.1", port: 0)
+        try await transport.start()
+        defer { Task { try? await transport.stop() } }
+
+        let store = transport.pendingUploadStore
+        let waiter = Task { () -> Error? in
+            do {
+                _ = try await store.waitForUpload(cid: "declared", progressToken: nil, sessionID: UUID())
+                return nil
+            } catch {
+                return error
+            }
+        }
+        try await Task.sleep(for: .milliseconds(100))
+
+        sendRaw("POST /mcp/uploads/declared HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 64\r\n\r\n", port: transport.port)
+
+        let deadline = Date().addingTimeInterval(3)
+        while await store.isExpectedOrArrived(cid: "declared"), Date() < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try #require(await !store.isExpectedOrArrived(cid: "declared"), "The CID is still waiting.")
+        #expect(await waiter.value is UploadTooLargeError)
+        #endif
+    }
+
     /// Checks that an upload without a session header creates no session.
     @Test func uploadWithoutSessionCreatesNone() async throws {
         let transport = HTTPSSETransport(server: SmallUploadServer(), host: "127.0.0.1", port: 0)
