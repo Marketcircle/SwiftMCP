@@ -5,7 +5,7 @@
 import Foundation
 
 /// A reader that splits a file descriptor's bytes into lines and drops lines over a limit.
-struct BoundedLineReader {
+struct BoundedLineReader: IteratorProtocol {
     /// One line the reader returns.
     enum Line: Equatable {
         /// A line within the limit, without its newline.
@@ -25,6 +25,8 @@ struct BoundedLineReader {
     private var buffer = Data()
     /// A Boolean value indicating whether the reader is dropping bytes until the next newline.
     private var discarding = false
+    /// The buffer every read fills.
+    private var chunk = [UInt8](repeating: 0, count: BoundedLineReader.chunkSize)
 
     /// Creates a reader for the given file descriptor and line limit in bytes.
     init(fileDescriptor: Int32, limit: Int) {
@@ -32,28 +34,31 @@ struct BoundedLineReader {
         self.limit = limit
     }
 
-    /// Returns the next line, or nil at the end of the input.
+    /// Returns the next line, or nil at the end of the input or after a failed read.
     mutating func next() -> Line? {
-        var chunk = [UInt8](repeating: 0, count: Self.chunkSize)
         while true {
             if let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
-                let line = Data(buffer[buffer.startIndex..<newline])
+                let line = Self.strippingCarriageReturn(Data(buffer[buffer.startIndex..<newline]))
                 buffer.removeSubrange(buffer.startIndex...newline)
                 let wasDiscarding = discarding
                 discarding = false
                 return wasDiscarding || line.count > limit ? .tooLong : .text(line)
             }
             if buffer.count > limit {
-                // The reader keeps no more than the limit while it waits for a newline.
+                // The reader drops the buffered bytes of an over-limit line.
                 buffer.removeAll()
                 discarding = true
             }
 
-            let count = read(fileDescriptor, &chunk, chunk.count)
-            if count < 0, errno == EINTR {
-                continue
+            let count = read(fileDescriptor, &chunk, Self.chunkSize)
+            if count < 0 {
+                if errno == EINTR {
+                    continue
+                }
+                // A failed read keeps the buffer for the next call.
+                return nil
             }
-            guard count > 0 else {
+            if count == 0 {
                 return finish()
             }
             buffer.append(contentsOf: chunk[0..<count])
@@ -69,6 +74,11 @@ struct BoundedLineReader {
         if discarding || buffer.count > limit {
             return .tooLong
         }
-        return buffer.isEmpty ? nil : .text(buffer)
+        return buffer.isEmpty ? nil : .text(Self.strippingCarriageReturn(buffer))
+    }
+
+    /// Returns the line without a trailing carriage return.
+    private static func strippingCarriageReturn(_ line: Data) -> Data {
+        line.last == UInt8(ascii: "\r") ? line.dropLast() : line
     }
 }
