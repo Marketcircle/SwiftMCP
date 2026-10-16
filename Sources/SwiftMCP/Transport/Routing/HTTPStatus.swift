@@ -22,6 +22,8 @@ public struct HTTPStatus: RawRepresentable, Sendable, Equatable {
 	public static let forbidden = HTTPStatus(rawValue: 403)
 	public static let notFound = HTTPStatus(rawValue: 404)
 	public static let methodNotAllowed = HTTPStatus(rawValue: 405)
+	/// The status for a request whose body did not arrive in time.
+	public static let requestTimeout = HTTPStatus(rawValue: 408)
 	/// The status for a request that clashes with the resource's current state.
 	public static let conflict = HTTPStatus(rawValue: 409)
 	public static let payloadTooLarge = HTTPStatus(rawValue: 413)

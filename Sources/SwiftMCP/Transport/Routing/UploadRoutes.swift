@@ -85,6 +85,9 @@ extension HTTPSSETransport {
 			case .disconnected:
 				await pendingUploadStore.fail(cid: cid, error: UploadInterruptedError())
 				return RouteResponse(status: .badRequest)
+			case .timedOut:
+				await pendingUploadStore.fail(cid: cid, error: UploadInterruptedError())
+				return RouteResponse(status: .requestTimeout)
 			}
 		}
 

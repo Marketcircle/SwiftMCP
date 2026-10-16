@@ -20,6 +20,8 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
     private var requestState: RequestState = .idle
     /// The cutoff record of the request whose body is streaming.
     private var currentBodyCutoff: BodyCutoff?
+    /// The timer that closes the connection when the streaming body goes quiet.
+    private var bodyTimer: Scheduled<Void>?
     private let transport: HTTPSSETransport
     let id = UUID()
 
@@ -33,6 +35,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
 
     /// Ends a body that is still streaming and passes the event on.
     func channelInactive(context: ChannelHandlerContext) {
+        cancelBodyTimer()
         if case .streaming(_, let continuation, _) = requestState {
             currentBodyCutoff?.record(.disconnected)
             continuation.finish()
@@ -81,6 +84,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
             let bodyCutoff = BodyCutoff()
             currentBodyCutoff = bodyCutoff
             requestState = .streaming(head: head, continuation: continuation, bytesWritten: 0)
+            restartBodyTimer(context: context)
             dispatchRoute(context: context, head: head, bodyStream: stream, bodyCutoff: bodyCutoff)
 
         // BODY — yield chunk into the stream
@@ -90,6 +94,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
             guard newTotal <= sizeLimit else {
                 logger.warning("Rejecting request: body size \(newTotal) > max \(sizeLimit)")
                 currentBodyCutoff?.record(.tooLarge)
+                cancelBodyTimer()
                 continuation.finish()
                 rejectOversizedRequest(context: context)
                 requestState = .rejected
@@ -99,10 +104,12 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
                 continuation.yield(Data(bytes))
             }
             requestState = .streaming(head: head, continuation: continuation, bytesWritten: newTotal)
+            restartBodyTimer(context: context)
 
         // END — finish the stream
         case (.end, .streaming(_, let continuation, _)):
             defer { requestState = .idle }
+            cancelBodyTimer()
             continuation.finish()
 
         // Rejection / unexpected states
@@ -210,6 +217,26 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
     }
 
     // MARK: - Helpers
+
+    /// Starts the body timer over from now, unless the transport turns the timeout off.
+    private func restartBodyTimer(context: ChannelHandlerContext) {
+        bodyTimer?.cancel()
+        bodyTimer = nil
+        let timeout = transport.bodyReadTimeout
+        guard timeout > 0 else { return }
+        let channel = context.channel
+        bodyTimer = context.eventLoop.scheduleTask(in: .nanoseconds(Int64(timeout * 1_000_000_000))) { [weak self] in
+            self?.logger.warning("Closing a connection whose request body went quiet for \(timeout) s")
+            self?.currentBodyCutoff?.record(.timedOut)
+            channel.close(promise: nil)
+        }
+    }
+
+    /// Stops the body timer.
+    private func cancelBodyTimer() {
+        bodyTimer?.cancel()
+        bodyTimer = nil
+    }
 
     private func maxBodySize(for head: HTTPRequestHead) -> Int {
         if head.uri.hasPrefix("/mcp/uploads"),
