@@ -765,6 +765,28 @@ struct HTTPTransportTests {
 		#expect(await transport.sessionManager.sessions.isEmpty)
 	}
 
+	/// Checks that a new session past the cap gets a 503 and the open sessions stay.
+	@Test("POST /mcp: a session past the cap returns 503")
+	func sessionCapRefusesNewSessions() async throws {
+		let (transport, baseURL) = try await startTransport()
+		transport.maxSessions = 1
+		defer { Task { try? await transport.stop() } }
+		let session = URLSession(configuration: .ephemeral)
+
+		var request = URLRequest(url: baseURL.appendingPathComponent("mcp"))
+		request.httpMethod = "POST"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		request.setValue("application/json", forHTTPHeaderField: "Accept")
+		request.httpBody = try encode(initializeRequest())
+
+		let (_, first) = try await session.data(for: request)
+		#expect((first as? HTTPURLResponse)?.statusCode == 200)
+
+		let (_, second) = try await session.data(for: request)
+		#expect((second as? HTTPURLResponse)?.statusCode == 503)
+		#expect(await transport.sessionManager.sessions.count == 1)
+	}
+
 	@Test("POST /mcp: missing body returns 400")
 	func missingBody() async throws {
 		let (transport, baseURL) = try await startTransport()

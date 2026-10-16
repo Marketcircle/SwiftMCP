@@ -24,4 +24,6 @@ public struct HTTPStatus: RawRepresentable, Sendable, Equatable {
 	public static let methodNotAllowed = HTTPStatus(rawValue: 405)
 	public static let payloadTooLarge = HTTPStatus(rawValue: 413)
 	public static let internalServerError = HTTPStatus(rawValue: 500)
+	/// The status for a server that is too busy to take the request.
+	public static let serviceUnavailable = HTTPStatus(rawValue: 503)
 }
