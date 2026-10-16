@@ -20,8 +20,14 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
     private var requestState: RequestState = .idle
     /// The cutoff record of the request whose body is streaming.
     private var currentBodyCutoff: BodyCutoff?
-    /// The timer that closes the connection when the streaming body goes quiet.
-    private var bodyTimer: Scheduled<Void>?
+    /// The timer that closes the connection when the client goes quiet while the server reads a request.
+    private var readTimer: Scheduled<Void>?
+    /// The timer that closes the connection when one request body takes too long in total.
+    private var bodyDeadline: Scheduled<Void>?
+    /// The number of request heads this connection has received.
+    private var requestCount = 0
+    /// The number of the last request whose response has started.
+    private var answeredCount = 0
     private let transport: HTTPSSETransport
     let id = UUID()
 
@@ -34,8 +40,14 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
     // MARK: - Channel Handler
 
     /// Ends a body that is still streaming and passes the event on.
+    /// Starts waiting for the first request head and passes the event on.
+    func channelActive(context: ChannelHandlerContext) {
+        restartReadTimer(context: context)
+        context.fireChannelActive()
+    }
+
     func channelInactive(context: ChannelHandlerContext) {
-        cancelBodyTimer()
+        cancelRequestTimers()
         if case .streaming(_, let continuation, _) = requestState {
             currentBodyCutoff?.record(.disconnected)
             continuation.finish()
@@ -65,10 +77,12 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
 
         // HEAD — create stream and dispatch handler immediately
         case (.head(let head), _):
+            requestCount += 1
             let sizeLimit = maxBodySize(for: head)
             if let contentLength = head.headers.first(name: "content-length"),
                let length = Int(contentLength), length > sizeLimit {
                 logger.warning("Rejecting request with Content-Length \(length) > max \(sizeLimit)")
+                cancelRequestTimers()
                 rejectOversizedRequest(context: context)
                 requestState = .rejected
                 // The route still runs, with an empty and flagged body.
@@ -84,7 +98,8 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
             let bodyCutoff = BodyCutoff()
             currentBodyCutoff = bodyCutoff
             requestState = .streaming(head: head, continuation: continuation, bytesWritten: 0)
-            restartBodyTimer(context: context)
+            restartReadTimer(context: context)
+            startBodyDeadline(context: context)
             dispatchRoute(context: context, head: head, bodyStream: stream, bodyCutoff: bodyCutoff)
 
         // BODY — yield chunk into the stream
@@ -94,7 +109,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
             guard newTotal <= sizeLimit else {
                 logger.warning("Rejecting request: body size \(newTotal) > max \(sizeLimit)")
                 currentBodyCutoff?.record(.tooLarge)
-                cancelBodyTimer()
+                cancelRequestTimers()
                 continuation.finish()
                 rejectOversizedRequest(context: context)
                 requestState = .rejected
@@ -104,12 +119,12 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
                 continuation.yield(Data(bytes))
             }
             requestState = .streaming(head: head, continuation: continuation, bytesWritten: newTotal)
-            restartBodyTimer(context: context)
+            restartReadTimer(context: context)
 
         // END — finish the stream
         case (.end, .streaming(_, let continuation, _)):
             defer { requestState = .idle }
-            cancelBodyTimer()
+            cancelRequestTimers()
             continuation.finish()
 
         // Rejection / unexpected states
@@ -135,9 +150,13 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
         let channel = context.channel
         let (path, queryParams) = parseURI(head.uri)
 
+        let requestNumber = requestCount
+
         guard let method = convertMethod(head.method),
               let routeMatch = transport.router.match(method: method, path: path) else {
-            sendResponse(channel: channel, status: .notFound)
+            if claimResponse(for: requestNumber) {
+                sendResponse(channel: channel, status: .notFound)
+            }
             return
         }
 
@@ -151,26 +170,30 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
         )
 
         Task {
+            let response: RouteResponse
             do {
-                let response = try await handler(self.transport, request)
-
-                // For SSE streaming responses, register the NIO channel.
-                // Legacy /sse does not emit Mcp-Session-Id, so prefer the explicit streamSessionID.
-                if response.bodyStream != nil {
-                    if let sessionUUID = response.streamSessionID {
-                        self.transport.registerSSEChannel(channel, id: sessionUUID)
-                    } else if let sessionId = response.headers.first(where: { $0.0.caseInsensitiveCompare("Mcp-Session-Id") == .orderedSame })?.1,
-                              let sessionUUID = UUID(uuidString: sessionId) {
-                        self.transport.registerSSEChannel(channel, id: sessionUUID)
-                    }
-                }
-
-                await self.writeRouteResponse(response, to: channel)
+                response = try await handler(self.transport, request)
             } catch {
                 self.logger.error("Route handler error: \(error)")
-                let errorResponse = RouteResponse(status: .internalServerError, body: Data("Internal Server Error".utf8))
-                await self.writeRouteResponse(errorResponse, to: channel)
+                response = RouteResponse(status: .internalServerError, body: Data("Internal Server Error".utf8))
             }
+
+            // The route answers only when the handler has not already answered this request.
+            let claimed = (try? await channel.eventLoop.submit { self.claimResponse(for: requestNumber) }.get()) ?? false
+            guard claimed else { return }
+
+            // For SSE streaming responses, register the NIO channel.
+            // Legacy /sse does not emit Mcp-Session-Id, so prefer the explicit streamSessionID.
+            if response.bodyStream != nil {
+                if let sessionUUID = response.streamSessionID {
+                    self.transport.registerSSEChannel(channel, id: sessionUUID)
+                } else if let sessionId = response.headers.first(where: { $0.0.caseInsensitiveCompare("Mcp-Session-Id") == .orderedSame })?.1,
+                          let sessionUUID = UUID(uuidString: sessionId) {
+                    self.transport.registerSSEChannel(channel, id: sessionUUID)
+                }
+            }
+
+            await self.writeRouteResponse(response, to: channel)
         }
     }
 
@@ -218,24 +241,59 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
 
     // MARK: - Helpers
 
-    /// Starts the body timer over from now, unless the transport turns the timeout off.
-    private func restartBodyTimer(context: ChannelHandlerContext) {
-        bodyTimer?.cancel()
-        bodyTimer = nil
-        let timeout = transport.bodyReadTimeout
-        guard timeout > 0 else { return }
+    /// Starts the read timer over from now, unless the transport turns the timeout off.
+    private func restartReadTimer(context: ChannelHandlerContext) {
+        readTimer?.cancel()
+        readTimer = schedule(after: transport.requestReadTimeout, context: context)
+    }
+
+    /// Starts the deadline for the whole body of the request that just began.
+    private func startBodyDeadline(context: ChannelHandlerContext) {
+        bodyDeadline?.cancel()
+        bodyDeadline = schedule(after: transport.requestBodyDeadline, context: context)
+    }
+
+    /// Marks the given request as answered and returns whether no response had started for it yet.
+    private func claimResponse(for request: Int) -> Bool {
+        guard answeredCount < request else { return false }
+        answeredCount = request
+        return true
+    }
+
+    /// Stops the read timer and the body deadline.
+    private func cancelRequestTimers() {
+        readTimer?.cancel()
+        readTimer = nil
+        bodyDeadline?.cancel()
+        bodyDeadline = nil
+    }
+
+    /// Returns a task that times the request out after the given seconds, or nil when the value turns the timeout off.
+    private func schedule(after seconds: TimeInterval, context: ChannelHandlerContext) -> Scheduled<Void>? {
+        guard seconds > 0, seconds.isFinite else { return nil }
+        // The cap of about 31 years keeps the nanosecond count inside Int64.
+        let nanoseconds = Int64(min(seconds, 1_000_000_000) * 1_000_000_000)
         let channel = context.channel
-        bodyTimer = context.eventLoop.scheduleTask(in: .nanoseconds(Int64(timeout * 1_000_000_000))) { [weak self] in
-            self?.logger.warning("Closing a connection whose request body went quiet for \(timeout) s")
-            self?.currentBodyCutoff?.record(.timedOut)
-            channel.close(promise: nil)
+        return context.eventLoop.scheduleTask(in: .nanoseconds(nanoseconds)) { [weak self] in
+            self?.timeOutRequest(channel: channel)
         }
     }
 
-    /// Stops the body timer.
-    private func cancelBodyTimer() {
-        bodyTimer?.cancel()
-        bodyTimer = nil
+    /// Ends a request whose body is streaming with a 408, and closes the connection.
+    private func timeOutRequest(channel: Channel) {
+        logger.warning("Closing a connection whose request went quiet or ran too long")
+        cancelRequestTimers()
+        if case .streaming(_, let continuation, _) = requestState {
+            currentBodyCutoff?.record(.timedOut)
+            continuation.finish()
+            requestState = .rejected
+            if claimResponse(for: requestCount) {
+                var headers = HTTPHeaders()
+                headers.add(name: "Connection", value: "close")
+                sendResponse(channel: channel, status: .requestTimeout, headers: headers)
+            }
+        }
+        channel.close(promise: nil)
     }
 
     private func maxBodySize(for head: HTTPRequestHead) -> Int {
@@ -247,6 +305,10 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
     }
 
     private func rejectOversizedRequest(context: ChannelHandlerContext) {
+        guard claimResponse(for: requestCount) else {
+            context.close(promise: nil)
+            return
+        }
         var headers = HTTPHeaders()
         headers.add(name: "Connection", value: "close")
         headers.add(name: "Content-Type", value: "text/plain; charset=utf-8")

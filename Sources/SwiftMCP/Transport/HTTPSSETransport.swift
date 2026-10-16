@@ -57,8 +57,11 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// The lifetime in seconds of an access token that comes without `expires_in`.
     static let defaultAccessTokenLifetime = 60 * 60
 
-    /// The seconds a request body may go without new bytes before the server closes the connection, 30 by default. Zero or less turns the timeout off.
-    public var bodyReadTimeout: TimeInterval = 30
+    /// The seconds a client may go quiet while the server reads its request, from connecting to the first head and between body chunks, 30 by default. Zero or less turns the timeout off.
+    public var requestReadTimeout: TimeInterval = 30
+
+    /// The seconds one request body may take in total, 300 by default. Zero or less turns the deadline off.
+    public var requestBodyDeadline: TimeInterval = 300
 
     /// The most connections the server keeps open at once, 256 by default. A connection past the cap closes right away.
     public var maxConnections: Int = 256
