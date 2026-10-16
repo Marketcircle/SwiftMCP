@@ -189,7 +189,7 @@ public final actor TCPConnection: StdioConnection {
                 Task {
                     await lineBuffer.append(data)
                     let lines = await lineBuffer.processLines()
-                    for line in lines {
+                    for case .text(let line) in lines {
                         continuation.yield(line)
                     }
                 }
@@ -202,7 +202,7 @@ public final actor TCPConnection: StdioConnection {
 
             if isComplete {
                 Task {
-                    if let remaining = await lineBuffer.getRemaining() {
+                    if case .text(let remaining) = await lineBuffer.getRemaining() {
                         continuation.yield(remaining)
                     }
                     continuation.finish()

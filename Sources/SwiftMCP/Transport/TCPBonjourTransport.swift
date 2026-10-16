@@ -26,6 +26,9 @@ public final class TCPBonjourTransport: Transport, @unchecked Sendable {
     public let serviceDomain: String
     public let acceptLocalOnly: Bool
     public let preferIPv4: Bool
+
+    /// The most bytes one line of input may hold (defaults to 4 MB).
+    public var maxMessageSize: Int = 4 * 1024 * 1024
     public private(set) var port: UInt16?
 
     private let queue = DispatchQueue(label: "com.cocoanetics.SwiftMCP.TCPBonjourTransport")
@@ -410,7 +413,7 @@ public final class TCPBonjourTransport: Transport, @unchecked Sendable {
     }
 
     private func startReceiveLoop(connection: NWConnection, session: Session, connectionID: UUID) {
-        let lineBuffer = LineBuffer()
+        let lineBuffer = LineBuffer(limit: maxMessageSize)
         receiveNext(connection: connection, session: session, connectionID: connectionID, lineBuffer: lineBuffer)
     }
 
@@ -428,7 +431,7 @@ public final class TCPBonjourTransport: Transport, @unchecked Sendable {
                     await lineBuffer.append(data)
                     let lines = await lineBuffer.processLines()
                     for line in lines {
-                        await self.handleLine(line, session: session)
+                        await self.handle(line, session: session)
                     }
                 }
             }
@@ -444,7 +447,7 @@ public final class TCPBonjourTransport: Transport, @unchecked Sendable {
             if isComplete {
                 Task {
                     if let remaining = await lineBuffer.getRemaining() {
-                        await self.handleLine(remaining, session: session)
+                        await self.handle(remaining, session: session)
                     }
                     await self.cleanupConnection(id: connectionID)
                 }
@@ -452,6 +455,20 @@ public final class TCPBonjourTransport: Transport, @unchecked Sendable {
             }
 
             self.receiveNext(connection: connection, session: session, connectionID: connectionID, lineBuffer: lineBuffer)
+        }
+    }
+
+    /// Handles a line within the limit, and answers an over-limit line with a parse error.
+    private func handle(_ line: LineBuffer.Line, session: Session) async {
+        switch line {
+        case .text(let text):
+            await handleLine(text, session: session)
+        case .tooLong:
+            logger.warning("Dropped an input line over \(maxMessageSize) bytes")
+            await session.work { _ in
+                let error = JSONRPCMessage.errorResponse(id: nil, error: .init(code: -32700, message: "Message exceeds maximum allowed size of \(maxMessageSize) bytes."))
+                try? await send(error)
+            }
         }
     }
 
