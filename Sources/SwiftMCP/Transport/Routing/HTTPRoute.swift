@@ -24,6 +24,9 @@ struct HTTPRoute: Sendable {
 		self.pathPattern = pathPattern
 		self.handler = { transport, streamingRequest in
 			let body = await Body.collect(from: streamingRequest.body)
+			if Body.isBuffered, streamingRequest.bodyLimit?.exceeded == true {
+				return RouteResponse(status: .payloadTooLarge)
+			}
 			let request = HTTPRouteRequest<Body>(
 				method: streamingRequest.method, uri: streamingRequest.uri, path: streamingRequest.path,
 				headers: streamingRequest.headers, body: body,

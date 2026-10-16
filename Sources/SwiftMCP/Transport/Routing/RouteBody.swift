@@ -8,4 +8,7 @@ import Foundation
 protocol RouteBody: Sendable {
 	/// Prepare the body value from the raw body chunk stream.
 	static func collect(from stream: AsyncStream<Data>) async -> Self
+
+	/// A Boolean value indicating whether the handler gets the whole body at once.
+	static var isBuffered: Bool { get }
 }
