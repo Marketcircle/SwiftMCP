@@ -29,4 +29,14 @@ struct SessionIdleTests {
         _ = await manager.session(id: id)
         #expect(await session.lastActivity > first)
     }
+
+    /// Checks that the ping keep-alive skips a session without an open stream.
+    @Test func pingSkipsSessionsWithoutStream() async throws {
+        let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
+        let session = await transport.sessionManager.session(id: UUID())
+
+        transport.sendKeepAlive()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(await session.responseTasks.isEmpty)
+    }
 }
