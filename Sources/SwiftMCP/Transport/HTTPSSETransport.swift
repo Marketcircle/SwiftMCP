@@ -53,6 +53,9 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// The lifetime in seconds of an access token that comes without `expires_in`.
     static let defaultAccessTokenLifetime = 60 * 60
 
+    /// The most sessions the server keeps at once, 64 by default. A request that would open one more gets a 503.
+    public var maxSessions: Int = 64
+
     /// The seconds a session without an open stream may sit idle before the keep-alive tick removes it, 30 minutes by default.
     public var sessionIdleTimeout: TimeInterval = 30 * 60
 
@@ -559,6 +562,13 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         // Custom routes registered by the user
         router.addRoutes(customRoutes)
         return router
+    }
+
+    /// Returns a 503 response when one more session would pass ``maxSessions``, or nil when there is room.
+    internal func sessionLimitResponse() async -> RouteResponse? {
+        guard await sessionManager.sessions.count >= maxSessions else { return nil }
+        logger.warning("Refused a new session because \(maxSessions) sessions are open")
+        return RouteResponse(status: .serviceUnavailable)
     }
 
     /// Returns the value of the given `X-Forwarded-*` header, or nil when ``trustsForwardedHeaders`` is off.

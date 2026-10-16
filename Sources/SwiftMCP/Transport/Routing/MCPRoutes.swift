@@ -31,6 +31,9 @@ extension HTTPSSETransport {
 			}
 			sessionID = parsed
 		} else {
+			if let refusal = await sessionLimitResponse() {
+				return refusal
+			}
 			sessionID = UUID()
 		}
 		let sid = sessionID.uuidString
@@ -128,6 +131,10 @@ extension HTTPSSETransport {
 		guard "text/event-stream".matchesAcceptHeader(acceptHeader) else {
 			logger.warning("Rejected non-SSE request (Accept: \(acceptHeader))")
 			return RouteResponse(status: .badRequest)
+		}
+
+		if await sessionManager.existingSession(id: sessionID) == nil, let refusal = await sessionLimitResponse() {
+			return refusal
 		}
 
 		let userAgent = request.header("User-Agent") ?? request.header("user-agent") ?? "unknown"
