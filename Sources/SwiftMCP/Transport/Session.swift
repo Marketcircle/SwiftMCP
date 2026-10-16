@@ -102,6 +102,13 @@ public actor Session {
         self.sseContinuation = continuation
     }
 
+    /// Stores the stream continuation unless the session already has one, and returns whether it did.
+    func claimSSEContinuation(_ continuation: AsyncStream<Data>.Continuation) -> Bool {
+        guard sseContinuation == nil else { return false }
+        sseContinuation = continuation
+        return true
+    }
+
     // MARK: - Convenience Mutators
 
     /// Update the access token stored for this session.

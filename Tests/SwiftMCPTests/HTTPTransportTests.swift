@@ -450,7 +450,7 @@ struct HTTPTransportTests {
 
 	#if canImport(Darwin)
 	/// Opens GET /sse on a raw socket and returns the socket plus the messages URL from the endpoint event.
-	private func openLegacySSESocket(baseURL: URL) throws -> (fd: Int32, messagesURL: URL) {
+	private func openLegacySSESocket(baseURL: URL, extraHeaders: String = "") throws -> (fd: Int32, messagesURL: URL) {
 		let fd = socket(AF_INET, SOCK_STREAM, 0)
 		#expect(fd >= 0)
 		var timeout = timeval(tv_sec: 0, tv_usec: 100_000)
@@ -463,7 +463,7 @@ struct HTTPTransportTests {
 			$0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
 		}
 		#expect(connected == 0)
-		let request = "GET /sse HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n"
+		let request = "GET /sse HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\(extraHeaders)\r\n"
 		_ = request.withCString { send(fd, $0, strlen($0), 0) }
 
 		var received = ""
@@ -514,6 +514,74 @@ struct HTTPTransportTests {
 		#expect(result.status == 404)
 		#expect(result.body == "Unknown session.")
 		#expect(await transport.sessionManager.sessions.isEmpty)
+		#endif
+	}
+
+	/// Checks that the legacy stream starts a new session even when the request names an existing one.
+	@Test("Legacy SSE: a supplied session ID is ignored")
+	func legacySSEIgnoresSuppliedSessionID() async throws {
+		#if canImport(FoundationNetworking)
+		// The test does not run on Linux.
+		return
+		#else
+		let (transport, baseURL) = try await startTransport()
+		defer { Task { try? await transport.stop() } }
+
+		let (first, firstURL) = try openLegacySSESocket(baseURL: baseURL)
+		defer { close(first) }
+		let existingID = firstURL.lastPathComponent
+		let (second, secondURL) = try openLegacySSESocket(baseURL: baseURL, extraHeaders: "Mcp-Session-Id: \(existingID)\r\n")
+		defer { close(second) }
+
+		#expect(secondURL.lastPathComponent != existingID)
+		#expect(await transport.sessionManager.sessions.count == 2)
+		#endif
+	}
+
+	/// Checks that a streamable GET naming an unknown session gets 404.
+	@Test("GET /mcp: an unknown session ID returns 404")
+	func streamUnknownSessionRejected() async throws {
+		let (transport, baseURL) = try await startTransport()
+		defer { Task { try? await transport.stop() } }
+
+		var request = URLRequest(url: baseURL.appendingPathComponent("mcp"))
+		request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+		request.setValue(UUID().uuidString, forHTTPHeaderField: "Mcp-Session-Id")
+		let (_, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+		#expect((response as? HTTPURLResponse)?.statusCode == 404)
+		#expect(await transport.sessionManager.sessions.isEmpty)
+	}
+
+	/// Checks that a second stream for a session that already has one gets 409.
+	@Test("GET /mcp: a second stream for a session returns 409")
+	func secondStreamRejected() async throws {
+		#if canImport(FoundationNetworking)
+		// URLSession.bytes(for:) is unavailable on Linux FoundationNetworking.
+		return
+		#else
+		let (transport, baseURL) = try await startTransport()
+		defer { Task { try? await transport.stop() } }
+		let session = URLSession(configuration: .ephemeral)
+
+		var initialize = URLRequest(url: baseURL.appendingPathComponent("mcp"))
+		initialize.httpMethod = "POST"
+		initialize.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		initialize.setValue("application/json", forHTTPHeaderField: "Accept")
+		initialize.httpBody = try encode(initializeRequest())
+		let (_, initialized) = try await session.data(for: initialize)
+		let sessionID = try #require((initialized as? HTTPURLResponse)?.value(forHTTPHeaderField: "Mcp-Session-Id"))
+
+		var stream = URLRequest(url: baseURL.appendingPathComponent("mcp"))
+		stream.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+		stream.setValue(sessionID, forHTTPHeaderField: "Mcp-Session-Id")
+		// The first stream runs in a task because bytes(for:) waits for body bytes.
+		let streamRequest = stream
+		let firstStream = Task { _ = try await URLSession(configuration: .ephemeral).bytes(for: streamRequest) }
+		defer { firstStream.cancel() }
+		try await Task.sleep(for: .milliseconds(300))
+
+		let (_, second) = try await session.data(for: stream)
+		#expect((second as? HTTPURLResponse)?.statusCode == 409)
 		#endif
 	}
 

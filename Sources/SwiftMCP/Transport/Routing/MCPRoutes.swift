@@ -124,7 +124,16 @@ extension HTTPSSETransport {
 	/// stream by `Session.sendSSE`.
 	func handleSSE(request: HTTPRouteRequest<Data?>) async throws -> RouteResponse {
 		let isLegacy = request.path == "/sse"
-		let sessionID = UUID(uuidString: request.sessionID ?? "") ?? UUID()
+		let sessionID: UUID
+		if !isLegacy, let header = request.sessionID {
+			// A streamable client reattaches only to a session that exists.
+			guard let parsed = UUID(uuidString: header), await sessionManager.existingSession(id: parsed) != nil else {
+				return .unknownSession
+			}
+			sessionID = parsed
+		} else {
+			sessionID = UUID()
+		}
 
 		// Validate SSE headers
 		let acceptHeader = request.header("accept") ?? request.header("Accept") ?? ""
@@ -163,7 +172,10 @@ extension HTTPSSETransport {
 		}
 
 		// Create the SSE stream — events will be yielded into it by Session.sendSSE
-		let stream = await prepareSSEStream(sessionID: sessionID)
+		guard let stream = await prepareSSEStream(sessionID: sessionID) else {
+			logger.warning("Refused a second stream for session \(sessionID)")
+			return RouteResponse(status: .conflict)
+		}
 
 		// For the legacy protocol, send the endpoint event as the first stream item
 		if isLegacy {
