@@ -67,6 +67,12 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         case authorized
         case unauthorized(String)
         case jweNotSupported(String)
+
+        /// A Boolean value indicating whether the result lets the request through.
+        var isAuthorized: Bool {
+            if case .authorized = self { return true }
+            return false
+        }
     }
 
     /// A function type that handles authorization of requests.
@@ -97,7 +103,13 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
 
         // 1. If we have a session ID, check token against session-stored value
         if let id = sessionID {
-            return await authorize(token, session: sessionManager.session(id: id))
+            let existed = await sessionManager.existingSession(id: id) != nil
+            let result = await authorize(token, session: sessionManager.session(id: id))
+            if !existed, !result.isAuthorized {
+                // The check created this session, so a failed check removes it again.
+                await sessionManager.removeSession(id: id)
+            }
+            return result
         }
 
         // 2. If we don't have a sessionID, see if we can locate a session by token.
