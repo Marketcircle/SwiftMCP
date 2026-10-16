@@ -40,6 +40,10 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     internal var keepAliveTimer: DispatchSourceTimer?
     /// The lock that serializes every change to `keepAliveTimer`.
     private let keepAliveLock = NSLock()
+    /// The number of connections open now.
+    private var openConnections = 0
+    /// The lock that guards ``openConnections``.
+    private let connectionLock = NSLock()
 
     /// The HTTP router that dispatches incoming requests to route handlers.
     internal lazy var router: Router = buildRouter()
@@ -55,6 +59,9 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
 
     /// The seconds a request body may go without new bytes before the server closes the connection, 30 by default. Zero or less turns the timeout off.
     public var bodyReadTimeout: TimeInterval = 30
+
+    /// The most connections the server keeps open at once, 256 by default. A connection past the cap closes right away.
+    public var maxConnections: Int = 256
 
     /// The most sessions the server keeps at once, 64 by default.
     public var maxSessions: Int = 64
@@ -315,6 +322,14 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
 			.serverChannelOption(ChannelOptions.backlog, value: 256)
 			.serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
 			.childChannelInitializer {  channel in
+            guard self.admitConnection() else {
+                self.logger.warning("Refused a connection because \(self.maxConnections) are open")
+                channel.close(promise: nil)
+                return channel.eventLoop.makeSucceededVoidFuture()
+            }
+            channel.closeFuture.whenComplete { _ in
+                self.releaseConnection()
+            }
             return channel.pipeline.configureHTTPServerPipeline().flatMap {
                 channel.pipeline.addHandler(HTTPLogger())
             }.flatMap {
@@ -600,6 +615,22 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         // Custom routes registered by the user
         router.addRoutes(customRoutes)
         return router
+    }
+
+    /// Counts a new connection and returns whether it fits under ``maxConnections``.
+    private func admitConnection() -> Bool {
+        connectionLock.withLock {
+            guard openConnections < maxConnections else { return false }
+            openConnections += 1
+            return true
+        }
+    }
+
+    /// Counts a connection that closed.
+    private func releaseConnection() {
+        connectionLock.withLock {
+            openConnections -= 1
+        }
     }
 
     /// Returns a 503 response when one more session would pass ``maxSessions``, or nil when there is room.
