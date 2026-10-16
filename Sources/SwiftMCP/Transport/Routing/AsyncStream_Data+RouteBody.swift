@@ -5,4 +5,7 @@ extension AsyncStream<Data>: RouteBody {
 	static func collect(from stream: AsyncStream<Data>) async -> AsyncStream<Data> {
 		stream
 	}
+
+	/// A Boolean value indicating whether the handler gets the whole body at once, which is false for a stream.
+	static var isBuffered: Bool { false }
 }
