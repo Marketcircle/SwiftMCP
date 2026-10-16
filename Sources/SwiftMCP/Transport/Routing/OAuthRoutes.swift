@@ -97,7 +97,7 @@ extension HTTPSSETransport {
 		let scheme: String
 		let port: Int
 
-		if let forwardedHost = request.header("X-Forwarded-Host") {
+		if let forwardedHost = forwardedHeader("X-Forwarded-Host", in: request) {
 			host = forwardedHost
 		} else if let hostHeader = request.header("Host") {
 			host = hostHeader
@@ -105,13 +105,13 @@ extension HTTPSSETransport {
 			host = self.host
 		}
 
-		if let forwardedProto = request.header("X-Forwarded-Proto") {
+		if let forwardedProto = forwardedHeader("X-Forwarded-Proto", in: request) {
 			scheme = forwardedProto
 		} else {
 			scheme = "http"
 		}
 
-		if let forwardedPort = request.header("X-Forwarded-Port"), let p = Int(forwardedPort) {
+		if let forwardedPort = forwardedHeader("X-Forwarded-Port", in: request), let p = Int(forwardedPort) {
 			port = p
 		} else {
 			port = self.port
@@ -344,7 +344,7 @@ extension HTTPSSETransport {
 	private func getBaseURL(from request: HTTPRouteRequest<Data?>) -> String {
 		let host: String
 
-		if let forwardedHost = request.header("X-Forwarded-Host") {
+		if let forwardedHost = forwardedHeader("X-Forwarded-Host", in: request) {
 			host = forwardedHost
 		} else if let hostHeader = request.header("Host") {
 			host = hostHeader
@@ -354,7 +354,7 @@ extension HTTPSSETransport {
 
 		let scheme: String
 
-		if let forwardedProto = request.header("X-Forwarded-Proto") {
+		if let forwardedProto = forwardedHeader("X-Forwarded-Proto", in: request) {
 			scheme = forwardedProto
 		} else {
 			scheme = "http"

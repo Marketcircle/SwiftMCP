@@ -49,6 +49,9 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
 
     /// Flag to determine whether to serve OpenAPI endpoints.
     public var serveOpenAPI: Bool = false
+
+    /// A Boolean value indicating whether URLs the server hands out honor the `X-Forwarded-Host`, `X-Forwarded-Proto`, and `X-Forwarded-Port` headers.
+    public var trustsForwardedHeaders: Bool = false
     
     /// Maximum allowed HTTP message size in bytes (defaults to 4 MB).
     public var maxMessageSize: Int = 4 * 1024 * 1024
@@ -536,5 +539,10 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         // Custom routes registered by the user
         router.addRoutes(customRoutes)
         return router
+    }
+
+    /// Returns the value of the given `X-Forwarded-*` header, or nil when ``trustsForwardedHeaders`` is off.
+    internal func forwardedHeader(_ name: String, in request: HTTPRouteRequest<Data?>) -> String? {
+        trustsForwardedHeaders ? request.header(name) : nil
     }
 }

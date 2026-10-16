@@ -30,13 +30,13 @@ extension HTTPSSETransport {
 		let host: String
 		let scheme: String
 
-		if let forwardedHost = request.header("X-Forwarded-Host") {
+		if let forwardedHost = forwardedHeader("X-Forwarded-Host", in: request) {
 			host = forwardedHost
 		} else {
 			host = self.host
 		}
 
-		if let forwardedProto = request.header("X-Forwarded-Proto") {
+		if let forwardedProto = forwardedHeader("X-Forwarded-Proto", in: request) {
 			scheme = forwardedProto
 		} else {
 			scheme = "http"
@@ -71,13 +71,13 @@ extension HTTPSSETransport {
 		let host: String
 		let scheme: String
 
-		if let forwardedHost = request.header("X-Forwarded-Host") {
+		if let forwardedHost = forwardedHeader("X-Forwarded-Host", in: request) {
 			host = forwardedHost
 		} else {
 			host = self.host
 		}
 
-		if let forwardedProto = request.header("X-Forwarded-Proto") {
+		if let forwardedProto = forwardedHeader("X-Forwarded-Proto", in: request) {
 			scheme = forwardedProto
 		} else {
 			scheme = "http"
