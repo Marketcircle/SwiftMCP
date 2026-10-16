@@ -62,6 +62,12 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
                 logger.warning("Rejecting request with Content-Length \(length) > max \(sizeLimit)")
                 rejectOversizedRequest(context: context)
                 requestState = .rejected
+                // The route still runs on an empty, flagged body so an upload fails its CID.
+                let (stream, continuation) = AsyncStream<Data>.makeStream()
+                let bodyLimit = BodyLimitFlag()
+                bodyLimit.raise()
+                continuation.finish()
+                dispatchRoute(context: context, head: head, bodyStream: stream, bodyLimit: bodyLimit)
                 return
             }
 
