@@ -24,7 +24,7 @@ public final actor MCPServerProcess: StdioConnection {
                     handle.readabilityHandler = nil
 
                     Task {
-                        if let line = await self.lineBuffer.getRemaining() {
+                        if case .text(let line) = await self.lineBuffer.getRemaining() {
                             continuation.yield(line)
                         }
                         continuation.finish()
@@ -36,7 +36,7 @@ public final actor MCPServerProcess: StdioConnection {
                     await self.lineBuffer.append(data)
 
                     let lines = await self.lineBuffer.processLines()
-                    for line in lines {
+                    for case .text(let line) in lines {
                         continuation.yield(line)
                     }
                 }
