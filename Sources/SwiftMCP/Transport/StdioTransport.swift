@@ -19,7 +19,10 @@ public final class StdioTransport: Transport, @unchecked Sendable {
     ///
     /// Used to track input/output operations and error conditions during transport operation.
     public let logger = Logger(label: "com.cocoanetics.SwiftMCP.StdioTransport")
-    
+
+    /// The most bytes one line of input may hold (defaults to 4 MB).
+    public var maxMessageSize: Int = 4 * 1024 * 1024
+
     /// Actor to handle running state in a thread-safe manner.
     private actor TransportState {
         var isRunning: Bool = false
@@ -61,20 +64,7 @@ public final class StdioTransport: Transport, @unchecked Sendable {
             await session.setTransport(self)
             do {
                 try await session.work { _ in
-                    while await state.isCurrentlyRunning() {
-                        if let input = readLine(),
-                           !input.isEmpty,
-                           let data = input.data(using: .utf8) {
-
-                            let string = String(data: data, encoding: .utf8)!
-                            logger.trace("STDIN:\n\n\(string.truncatedForLog)")
-
-                            try await handleReceived(data)
-                        } else {
-                            // If no input is available, sleep briefly and try again.
-                            try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-                        }
-                    }
+                    try await processInput()
                 }
             } catch {
                 logger.error("Error processing input: \(error)")
@@ -94,19 +84,29 @@ public final class StdioTransport: Transport, @unchecked Sendable {
         let session = Session(id: UUID())
         await session.setTransport(self)
         try await session.work { _ in
-            while await state.isCurrentlyRunning() {
-                if let input = readLine(),
-                   !input.isEmpty,
-                   let data = input.data(using: .utf8) {
+            try await processInput()
+        }
+    }
 
-                    let string = String(data: data, encoding: .utf8)!
-                    logger.trace("STDIN:\n\n\(string.truncatedForLog)")
-
-                    try await handleReceived(data)
-                } else {
-                    // If no input is available, sleep briefly and try again.
-                    try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-                }
+    /// Reads stdin line by line and handles each message until the transport stops.
+    ///
+    /// A line over ``maxMessageSize`` gets a parse error instead of being handled.
+    private func processInput() async throws {
+        var reader = BoundedLineReader(fileDescriptor: STDIN_FILENO, limit: maxMessageSize)
+        while await state.isCurrentlyRunning() {
+            switch reader.next() {
+            case .text(let data) where !data.isEmpty:
+                logger.trace("STDIN:\n\n\((String(data: data, encoding: .utf8) ?? "").truncatedForLog)")
+                try await handleReceived(data)
+            case .tooLong:
+                logger.warning("Dropped an input line over \(maxMessageSize) bytes")
+                let error = JSONRPCMessage.errorResponse(id: nil, error: .init(code: -32700, message: "Message exceeds maximum allowed size of \(maxMessageSize) bytes."))
+                try await send(error)
+            case .text:
+                continue
+            case nil:
+                // If no input is available, sleep briefly and try again.
+                try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
             }
         }
     }
