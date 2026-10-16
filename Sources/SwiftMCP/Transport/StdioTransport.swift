@@ -67,7 +67,7 @@ public final class StdioTransport: Transport, @unchecked Sendable {
                            let data = input.data(using: .utf8) {
 
                             let string = String(data: data, encoding: .utf8)!
-                            logger.trace( "STDIN:\n\n\(string)")
+                            logger.trace("STDIN:\n\n\(string.truncatedForLog)")
 
                             try await handleReceived(data)
                         } else {
@@ -100,7 +100,7 @@ public final class StdioTransport: Transport, @unchecked Sendable {
                    let data = input.data(using: .utf8) {
 
                     let string = String(data: data, encoding: .utf8)!
-                    logger.trace( "STDIN:\n\n\(string)")
+                    logger.trace("STDIN:\n\n\(string.truncatedForLog)")
 
                     try await handleReceived(data)
                 } else {
@@ -157,7 +157,7 @@ public final class StdioTransport: Transport, @unchecked Sendable {
         precondition(sameTransport)
 
         let string = String(data: data, encoding: .utf8)!
-        logger.trace("STDOUT:\n\n\(string)")
+        logger.trace("STDOUT:\n\n\(string.truncatedForLog)")
 
         var out = data
         let nl = "\n".data(using: .utf8)!

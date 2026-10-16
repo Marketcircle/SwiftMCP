@@ -846,7 +846,7 @@ public final actor MCPServerProxy: Sendable {
         }
 
         guard let jsonData = data.data(using: .utf8) else { return }
-        logger.trace("[MCP DEBUG] Received JSON-RPC message: \(data)")
+        logger.trace("[MCP DEBUG] Received JSON-RPC message: \(data.truncatedForLog)")
         let decoder = JSONDecoder()
         if let message = try? decoder.decode(JSONRPCMessage.self, from: jsonData) {
             switch message {
