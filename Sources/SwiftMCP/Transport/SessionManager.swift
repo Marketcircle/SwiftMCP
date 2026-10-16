@@ -194,7 +194,7 @@ actor SessionManager {
     func session(forToken token: String) async -> Session? {
         for session in sessions.values {
             if let stored = await session.accessToken,
-               stored == token,
+               stored.constantTimeEquals(token),
                (await session.accessTokenExpiry ?? Date.distantFuture) > Date() {
                 return session
             }

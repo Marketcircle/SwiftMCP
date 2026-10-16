@@ -168,7 +168,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
             return rejection
         }
         if let stored = await session.accessToken {
-            guard stored == token else {
+            guard let token, stored.constantTimeEquals(token) else {
                 return .unauthorized("Invalid or expired token")
             }
             // Without OAuth, the handler decides every request.
