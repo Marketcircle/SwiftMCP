@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import SwiftMCP
 
+/// Tests how idle sessions are found and removed.
 @Suite("Session idle expiry")
 struct SessionIdleTests {
     /// Checks that a session without a channel stays until it has been idle past the timeout.

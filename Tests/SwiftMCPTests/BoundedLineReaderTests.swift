@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import SwiftMCP
 
+/// Tests how the bounded line reader splits and drops lines.
 @Suite("Bounded line reader")
 struct BoundedLineReaderTests {
     /// Returns every line a reader with the given limit produces for the given input.

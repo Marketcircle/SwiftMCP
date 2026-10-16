@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import SwiftMCP
 
+/// Tests how logged payloads and headers are trimmed and masked.
 @Suite("Log redaction")
 struct LogRedactionTests {
     /// Checks that a short payload is logged unchanged.
