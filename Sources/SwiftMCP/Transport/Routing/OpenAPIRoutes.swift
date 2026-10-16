@@ -114,8 +114,7 @@ extension HTTPSSETransport {
 
 		if case .unauthorized(let message) = await authorize(token, sessionID: sessionID) {
 			let err = JSONRPCMessage.errorResponse(id: nil, error: .init(code: -32000, message: "Unauthorized: \(message)"))
-			let data = try! JSONEncoder().encode(err)
-			return RouteResponse(status: .unauthorized, headers: [("Content-Type", "application/json")], body: data)
+			return .json(err, status: .unauthorized)
 		}
 
 		guard let body = request.body else {
@@ -181,41 +180,17 @@ extension HTTPSSETransport {
 			return RouteResponse(status: .ok, headers: [("Content-Type", "application/json")], body: jsonData)
 
 		} catch {
-			let localizedDescription = error.localizedDescription
-			let reflectedDescription = String(reflecting: error)
-			let errorType = String(describing: type(of: error))
-			let nsError = error as NSError
-
-			var errorData: JSONDictionary = [
-				"errorType": .string(errorType),
-				"debugDescription": .string(reflectedDescription),
-				"localizedDescription": .string(localizedDescription),
-				"nsErrorDomain": .string(nsError.domain),
-				"nsErrorCode": .integer(nsError.code)
-			]
-
-			if let localizedError = error as? LocalizedError {
-				if let failureReason = localizedError.failureReason {
-					errorData["failureReason"] = .string(failureReason)
-				}
-				if let recoverySuggestion = localizedError.recoverySuggestion {
-					errorData["recoverySuggestion"] = .string(recoverySuggestion)
-				}
-			}
-
 			let err = JSONRPCMessage.errorResponse(
 				id: nil,
-				error: .init(code: -32000, message: localizedDescription, data: errorData)
+				error: .init(code: -32000, message: error.localizedDescription)
 			)
-
-			let data = try! JSONEncoder().encode(err)
 
 			var status: HTTPStatus = .badRequest
 			if let mcpError = error as? MCPToolError, case .unknownTool(_) = mcpError {
 				status = .notFound
 			}
 
-			return RouteResponse(status: status, headers: [("Content-Type", "application/json")], body: data)
+			return .json(err, status: status)
 		}
 	}
 }
