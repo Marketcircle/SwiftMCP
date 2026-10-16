@@ -96,19 +96,19 @@ extension HTTPSSETransport {
 
 		if let host = request.header("Host") {
 			components.host = host
-		} else if let remoteAddress = request.header("X-Forwarded-Host") {
+		} else if let remoteAddress = forwardedHeader("X-Forwarded-Host", in: request) {
 			components.host = remoteAddress
 		} else {
 			components.host = self.host
 		}
 
-		if let proto = request.header("X-Forwarded-Proto") {
+		if let proto = forwardedHeader("X-Forwarded-Proto", in: request) {
 			components.scheme = proto
 		} else {
 			components.scheme = "http"
 		}
 
-		if let port = request.header("X-Forwarded-Port") {
+		if let port = forwardedHeader("X-Forwarded-Port", in: request) {
 			components.port = Int(port)
 		} else if let host = components.host, host.contains(":") {
 			let parts = host.split(separator: ":")
