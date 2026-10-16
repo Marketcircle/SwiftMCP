@@ -51,6 +51,8 @@ actor SessionManager {
     ///   - id: The unique identifier for the channel.
     ///   - transport: Transport associated with the session.
     func register(channel: Channel, id: UUID) async {
+        // A channel that closed before it got here has nothing left to register.
+        guard channel.isActive else { return }
         let session: Session
         if let existing = sessions[id] {
             session = existing
@@ -158,6 +160,15 @@ actor SessionManager {
             await session.setChannel(nil)
         }
         sessions.removeValue(forKey: id)
+    }
+
+    /// Removes the session when its channel is the given one or it has none yet.
+    func removeSession(id: UUID, ifChannel channel: Channel) async {
+        guard let session = sessions[id] else { return }
+        if let current = await session.channel, current !== channel {
+            return
+        }
+        await removeSession(id: id)
     }
 
     /// Removes every session with no open channel that has been idle longer than the given seconds.

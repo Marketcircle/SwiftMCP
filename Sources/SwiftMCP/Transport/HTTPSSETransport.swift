@@ -461,10 +461,15 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// Prepare an SSE session: create the stream, store the continuation,
     /// and return the `AsyncStream<Data>` for the route handler to include
     /// in its response. Does **not** touch the NIO channel.
-    func prepareSSEStream(sessionID: UUID) async -> AsyncStream<Data> {
+    ///
+    /// Returns nil when the session already has a stream.
+    func prepareSSEStream(sessionID: UUID) async -> AsyncStream<Data>? {
         let (stream, continuation) = AsyncStream<Data>.makeStream()
         let session = await sessionManager.session(id: sessionID)
-        await session.setSSEContinuation(continuation)
+        guard await session.claimSSEContinuation(continuation) else {
+            continuation.finish()
+            return nil
+        }
         return stream
     }
 
@@ -481,7 +486,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
             guard let self = self else { return }
             Task {
                 // Remove the entire session when the channel closes
-                await self.sessionManager.removeSession(id: id)
+                await self.sessionManager.removeSession(id: id, ifChannel: channel)
                 let count = await self.sessionManager.channelCount
                 self.logger.info("SSE channel removed (remaining: \(count))")
             }
