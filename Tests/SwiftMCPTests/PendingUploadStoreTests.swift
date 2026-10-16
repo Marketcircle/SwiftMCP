@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import SwiftMCP
 
+/// Tests how the pending upload store deletes its temp files.
 @Suite("Pending upload store")
 struct PendingUploadStoreTests {
     /// Returns the URL of a new temp file holding one byte.

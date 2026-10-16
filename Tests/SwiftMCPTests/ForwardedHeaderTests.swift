@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import SwiftMCP
 
+/// Tests when the legacy endpoint URL honors forwarded headers.
 @Suite("Forwarded headers")
 struct ForwardedHeaderTests {
     /// The session ID every test announces.
