@@ -715,6 +715,28 @@ struct HTTPTransportTests {
 		#expect(body.contains("10"), "Expected result to contain 10, got: \(body)")
 	}
 
+	/// Checks that a failed OpenAPI tool call answers with only the error message.
+	@Test("POST /{serverName}/{toolName}: errors carry no internal details")
+	func openAPIToolCallErrorIsPlain() async throws {
+		let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
+		transport.serveOpenAPI = true
+		try await transport.start()
+		defer { Task { try? await transport.stop() } }
+
+		var request = URLRequest(url: URL(string: "http://127.0.0.1:\(transport.port)/calculator/noSuchTool")!)
+		request.httpMethod = "POST"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		request.httpBody = Data("{}".utf8)
+
+		let (data, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+		#expect((response as? HTTPURLResponse)?.statusCode == 404)
+
+		let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+		let error = json?["error"] as? [String: Any]
+		#expect(error?["message"] is String)
+		#expect(error?["data"] == nil)
+	}
+
 	// MARK: - Error cases
 
 	@Test("POST /mcp: missing body returns 400")
