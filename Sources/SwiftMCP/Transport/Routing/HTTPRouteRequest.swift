@@ -61,6 +61,8 @@ final class BodyCutoff: @unchecked Sendable {
 		case tooLarge
 		/// The client disconnected before the body ended.
 		case disconnected
+		/// The body went quiet for longer than the read timeout.
+		case timedOut
 	}
 
 	/// The lock that guards ``storedReason``.

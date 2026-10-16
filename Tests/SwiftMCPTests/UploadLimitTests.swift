@@ -146,6 +146,42 @@ struct UploadLimitTests {
         #endif
     }
 
+    /// Checks that a body that goes quiet makes the server close the connection and fail the waiting CID.
+    @Test func stalledBodyTimesOut() async throws {
+        #if canImport(FoundationNetworking)
+        // The test does not run on Linux.
+        return
+        #else
+        let transport = HTTPSSETransport(server: SmallUploadServer(), host: "127.0.0.1", port: 0)
+        transport.bodyReadTimeout = 0.3
+        try await transport.start()
+        defer { Task { try? await transport.stop() } }
+
+        let store = transport.pendingUploadStore
+        let waiter = Task { () -> Error? in
+            do {
+                _ = try await store.waitForUpload(cid: "stalled", progressToken: nil, sessionID: UUID())
+                return nil
+            } catch {
+                return error
+            }
+        }
+        try await waitUntilExpected("stalled", in: store)
+
+        // The socket sends one chunk, then waits for the server to close it.
+        let start = Date()
+        sendRaw("POST /mcp/uploads/stalled HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nabcd\r\n", port: transport.port)
+        #expect(Date().timeIntervalSince(start) < 0.9)
+
+        let deadline = Date().addingTimeInterval(3)
+        while await store.isExpectedOrArrived(cid: "stalled"), Date() < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try #require(await !store.isExpectedOrArrived(cid: "stalled"), "The CID is still waiting.")
+        #expect(await waiter.value is UploadInterruptedError)
+        #endif
+    }
+
     /// Checks that an upload without a session header creates no session.
     @Test func uploadWithoutSessionCreatesNone() async throws {
         let transport = HTTPSSETransport(server: SmallUploadServer(), host: "127.0.0.1", port: 0)

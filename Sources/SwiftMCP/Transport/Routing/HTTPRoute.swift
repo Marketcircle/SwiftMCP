@@ -28,6 +28,7 @@ struct HTTPRoute: Sendable {
 				switch reason {
 				case .tooLarge: return RouteResponse(status: .payloadTooLarge)
 				case .disconnected: return RouteResponse(status: .badRequest)
+				case .timedOut: return RouteResponse(status: .requestTimeout)
 				}
 			}
 			let request = HTTPRouteRequest<Body>(
