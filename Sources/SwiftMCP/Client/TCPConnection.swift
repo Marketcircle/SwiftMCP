@@ -184,13 +184,18 @@ public final actor TCPConnection: StdioConnection {
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async {
         let lineBuffer = self.lineBuffer
+        let logger = self.logger
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, isComplete, error in
             if let data, !data.isEmpty {
                 Task {
                     await lineBuffer.append(data)
                     let lines = await lineBuffer.processLines()
-                    for case .text(let line) in lines {
-                        continuation.yield(line)
+                    for line in lines {
+                        if case .text(let text) = line {
+                            continuation.yield(text)
+                        } else {
+                            logger.warning("Dropped a server line over \(lineBuffer.limit) bytes")
+                        }
                     }
                 }
             }
@@ -202,8 +207,11 @@ public final actor TCPConnection: StdioConnection {
 
             if isComplete {
                 Task {
-                    if case .text(let remaining) = await lineBuffer.getRemaining() {
-                        continuation.yield(remaining)
+                    let remaining = await lineBuffer.getRemaining()
+                    if case .text(let text) = remaining {
+                        continuation.yield(text)
+                    } else if remaining == .tooLong {
+                        logger.warning("Dropped a server line over \(lineBuffer.limit) bytes")
                     }
                     continuation.finish()
                 }

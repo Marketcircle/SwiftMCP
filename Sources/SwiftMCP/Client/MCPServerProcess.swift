@@ -1,6 +1,7 @@
 #if os(macOS) || os(Linux)
 
 import Foundation
+import Logging
 
 /// Manages a stdio connection to an MCP server, optionally backed by a process.
 public final actor MCPServerProcess: StdioConnection {
@@ -9,6 +10,8 @@ public final actor MCPServerProcess: StdioConnection {
     private var outputHandle: FileHandle?
     private var errorHandle: FileHandle?
     private let lineBuffer = LineBuffer()
+    /// The logger for lines the process sends.
+    private let logger = Logger(label: "com.cocoanetics.SwiftMCP.MCPServerProcess")
 
     /// A sequence of newline-separated strings from the process output.
     public var lines: AsyncThrowingStream<String, Error> {
@@ -24,8 +27,11 @@ public final actor MCPServerProcess: StdioConnection {
                     handle.readabilityHandler = nil
 
                     Task {
-                        if case .text(let line) = await self.lineBuffer.getRemaining() {
+                        let remaining = await self.lineBuffer.getRemaining()
+                        if case .text(let line) = remaining {
                             continuation.yield(line)
+                        } else if remaining == .tooLong {
+                            self.logger.warning("Dropped a server line over \(self.lineBuffer.limit) bytes")
                         }
                         continuation.finish()
                     }
@@ -36,8 +42,12 @@ public final actor MCPServerProcess: StdioConnection {
                     await self.lineBuffer.append(data)
 
                     let lines = await self.lineBuffer.processLines()
-                    for case .text(let line) in lines {
-                        continuation.yield(line)
+                    for line in lines {
+                        if case .text(let text) = line {
+                            continuation.yield(text)
+                        } else {
+                            self.logger.warning("Dropped a server line over \(self.lineBuffer.limit) bytes")
+                        }
                     }
                 }
             }
