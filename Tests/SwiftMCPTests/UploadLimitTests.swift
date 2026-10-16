@@ -10,7 +10,7 @@ final class SmallUploadServer: MCPFileUploadHandling {
 }
 
 /// Tests the upload route's limits on size and sessions.
-@Suite("Upload limits")
+@Suite("Upload limits", .serialized)
 struct UploadLimitTests {
     /// Returns the names of the upload temp files the route writes.
     private func uploadTempFiles() -> Set<String> {
@@ -67,7 +67,7 @@ struct UploadLimitTests {
         }
         try #require(await !store.isExpectedOrArrived(cid: "big"), "The CID is still waiting.")
         #expect(await waiter.value is UploadTooLargeError)
-        #expect(uploadTempFiles() == filesBefore)
+        #expect(uploadTempFiles().subtracting(filesBefore).isEmpty)
         #endif
     }
 

@@ -556,7 +556,7 @@ struct HTTPTransportTests {
 	@Test("GET /mcp: a second stream for a session returns 409")
 	func secondStreamRejected() async throws {
 		#if canImport(FoundationNetworking)
-		// URLSession.bytes(for:) is unavailable on Linux FoundationNetworking.
+		// The test does not run on Linux.
 		return
 		#else
 		let (transport, baseURL) = try await startTransport()
@@ -576,11 +576,20 @@ struct HTTPTransportTests {
 		stream.setValue(sessionID, forHTTPHeaderField: "Mcp-Session-Id")
 		// A task holds the first stream open.
 		let streamRequest = stream
-		let firstStream = Task { _ = try await URLSession(configuration: .ephemeral).bytes(for: streamRequest) }
+		let firstStream = Task {
+			let (bytes, _) = try await URLSession(configuration: .ephemeral).bytes(for: streamRequest)
+			for try await _ in bytes {}
+		}
 		defer { firstStream.cancel() }
-		try await Task.sleep(for: .milliseconds(300))
+		let id = try #require(UUID(uuidString: sessionID))
+		let deadline = Date().addingTimeInterval(5)
+		while await transport.sessionManager.existingSession(id: id)?.hasActiveConnection != true, Date() < deadline {
+			try await Task.sleep(for: .milliseconds(20))
+		}
 
-		let (_, second) = try await session.data(for: stream)
+		let configuration = URLSessionConfiguration.ephemeral
+		configuration.timeoutIntervalForRequest = 5
+		let (_, second) = try await URLSession(configuration: configuration).data(for: stream)
 		#expect((second as? HTTPURLResponse)?.statusCode == 409)
 		#endif
 	}
