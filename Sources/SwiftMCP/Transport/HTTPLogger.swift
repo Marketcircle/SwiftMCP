@@ -22,6 +22,8 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
     internal var currentResponseHead: HTTPResponseHead?
     internal var currentResponseBody = ""
     internal var isSSEConnection = false
+    /// A Boolean value indicating whether the current exchange's bodies may appear in the log.
+    internal var logsBodies = true
 
     /// Log incoming requests and forward them to the next handler
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -40,9 +42,10 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
 
                     currentRequestHead = head
                     currentRequestBody = ""
+                    logsBodies = Self.showsBodies(for: head.uri)
 
                 case .body(let buffer):
-                    if httpLogger.logLevel <= .trace,
+                    if logsBodies, httpLogger.logLevel <= .trace,
                        let str = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) {
                         currentRequestBody += str
                     }
@@ -83,7 +86,7 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
                             if isSSEConnection {
                                 // For SSE, log each message immediately
                                 sseLogger.trace("SSE: \(str.truncatedForLog)")
-                            } else if httpLogger.logLevel <= .trace {
+                            } else if logsBodies, httpLogger.logLevel <= .trace {
                                 currentResponseBody += str
                             }
                         }
@@ -131,6 +134,14 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
         }
 
         httpLogger.trace("\(log)")
+    }
+
+    /// The path prefixes of the OAuth routes, whose bodies a log line never shows.
+    static let credentialPathPrefixes = ["/authorize", "/oauth/", "/userinfo", "/u/"]
+
+    /// Returns whether a log line may show the bodies of a request to the given URI.
+    static func showsBodies(for uri: String) -> Bool {
+        !credentialPathPrefixes.contains { uri.hasPrefix($0) }
     }
 
     /// The lowercase names of the headers whose values a log line masks.

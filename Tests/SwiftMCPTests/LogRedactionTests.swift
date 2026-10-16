@@ -30,4 +30,13 @@ struct LogRedactionTests {
         #expect(lines.contains("cookie: <redacted>\n"))
         #expect(lines.contains("Accept: text/event-stream\n"))
     }
+
+    /// Checks that OAuth routes never log their bodies and MCP routes may.
+    @Test func oauthBodiesAreNeverLogged() {
+        #expect(!HTTPLogger.showsBodies(for: "/oauth/token"))
+        #expect(!HTTPLogger.showsBodies(for: "/u/login?state=abc"))
+        #expect(!HTTPLogger.showsBodies(for: "/authorize?client_id=x"))
+        #expect(HTTPLogger.showsBodies(for: "/mcp"))
+        #expect(HTTPLogger.showsBodies(for: "/messages/123"))
+    }
 }
