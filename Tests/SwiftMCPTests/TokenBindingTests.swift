@@ -34,4 +34,12 @@ struct TokenBindingTests {
         transport.authorizationHandler = { _ in .unauthorized("Rotated") }
         #expect(await !transport.authorize("good", sessionID: id).isAuthorized)
     }
+
+    /// Checks that the constant-time compare matches only identical strings.
+    @Test func constantTimeCompare() {
+        #expect("token".constantTimeEquals("token"))
+        #expect(!"token".constantTimeEquals("tokem"))
+        #expect(!"token".constantTimeEquals("token2"))
+        #expect("".constantTimeEquals(""))
+    }
 }
