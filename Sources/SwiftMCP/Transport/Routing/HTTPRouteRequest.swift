@@ -29,6 +29,9 @@ public struct HTTPRouteRequest<Body: Sendable>: Sendable {
 	/// For example, `?tag=a&tag=b` yields `[("tag", "a"), ("tag", "b")]`.
 	public let queryParams: [(String, String)]
 
+	/// The flag the HTTP handler raises when a streamed body passes its size limit.
+	var bodyLimit: BodyLimitFlag? = nil
+
 	// MARK: - Convenience
 
 	/// Extracts the Bearer token from the Authorization header, if present.
@@ -47,5 +50,23 @@ public struct HTTPRouteRequest<Body: Sendable>: Sendable {
 	/// Returns the first header value matching the given name (case-insensitive).
 	public func header(_ name: String) -> String? {
 		headers.first(where: { $0.0.caseInsensitiveCompare(name) == .orderedSame })?.1
+	}
+}
+
+/// A flag that marks a streamed request body cut off at its size limit.
+final class BodyLimitFlag: @unchecked Sendable {
+	/// The lock that guards ``storedExceeded``.
+	private let lock = NSLock()
+	/// The backing value of ``exceeded``.
+	private var storedExceeded = false
+
+	/// A Boolean value indicating whether the body passed its size limit.
+	var exceeded: Bool {
+		lock.withLock { storedExceeded }
+	}
+
+	/// Records that the body passed its size limit.
+	func raise() {
+		lock.withLock { storedExceeded = true }
 	}
 }

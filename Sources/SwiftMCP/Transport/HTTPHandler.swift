@@ -18,6 +18,8 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
     typealias OutboundOut = HTTPServerResponsePart
 
     private var requestState: RequestState = .idle
+    /// The size-limit flag of the request whose body is streaming.
+    private var currentBodyLimit: BodyLimitFlag?
     private let transport: HTTPSSETransport
     let id = UUID()
 
@@ -64,8 +66,10 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
             }
 
             let (stream, continuation) = AsyncStream<Data>.makeStream()
+            let bodyLimit = BodyLimitFlag()
+            currentBodyLimit = bodyLimit
             requestState = .streaming(head: head, continuation: continuation, bytesWritten: 0)
-            dispatchRoute(context: context, head: head, bodyStream: stream)
+            dispatchRoute(context: context, head: head, bodyStream: stream, bodyLimit: bodyLimit)
 
         // BODY — yield chunk into the stream
         case (.body(let buffer), .streaming(let head, let continuation, let bytesWritten)):
@@ -73,6 +77,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
             let newTotal = bytesWritten + buffer.readableBytes
             guard newTotal <= sizeLimit else {
                 logger.warning("Rejecting request: body size \(newTotal) > max \(sizeLimit)")
+                currentBodyLimit?.raise()
                 continuation.finish()
                 rejectOversizedRequest(context: context)
                 requestState = .rejected
@@ -107,7 +112,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
     /// Match the route and dispatch the handler. For buffered handlers, the body
     /// stream is collected into `Data` first. For streaming handlers, the stream
     /// is passed directly.
-    private func dispatchRoute(context: ChannelHandlerContext, head: HTTPRequestHead, bodyStream: AsyncStream<Data>) {
+    private func dispatchRoute(context: ChannelHandlerContext, head: HTTPRequestHead, bodyStream: AsyncStream<Data>, bodyLimit: BodyLimitFlag) {
         let channel = context.channel
         let (path, queryParams) = parseURI(head.uri)
 
@@ -122,7 +127,8 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
         let request = HTTPRouteRequest<AsyncStream<Data>>(
             method: method, uri: head.uri, path: path,
             headers: convertHeaders(head.headers), body: bodyStream,
-            pathParams: routeMatch.pathParams, queryParams: queryParams
+            pathParams: routeMatch.pathParams, queryParams: queryParams,
+            bodyLimit: bodyLimit
         )
 
         Task {

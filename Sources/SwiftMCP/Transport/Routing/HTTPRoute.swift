@@ -27,7 +27,8 @@ struct HTTPRoute: Sendable {
 			let request = HTTPRouteRequest<Body>(
 				method: streamingRequest.method, uri: streamingRequest.uri, path: streamingRequest.path,
 				headers: streamingRequest.headers, body: body,
-				pathParams: streamingRequest.pathParams, queryParams: streamingRequest.queryParams
+				pathParams: streamingRequest.pathParams, queryParams: streamingRequest.queryParams,
+				bodyLimit: streamingRequest.bodyLimit
 			)
 			return try await handler(transport, request)
 		}

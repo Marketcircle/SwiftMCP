@@ -72,6 +72,13 @@ extension HTTPSSETransport {
 			throw error
 		}
 
+		if request.bodyLimit?.exceeded == true {
+			try? FileManager.default.removeItem(at: tempURL)
+			let limit = (server as? MCPFileUploadHandling)?.maxUploadSize ?? maxMessageSize
+			await pendingUploadStore.fail(cid: cid, error: UploadTooLargeError(limit: limit))
+			return RouteResponse(status: .payloadTooLarge)
+		}
+
 		guard byteCount > 0 else {
 			try? FileManager.default.removeItem(at: tempURL)
 			return RouteResponse(status: .badRequest, body: Data("Request body required.".utf8))
@@ -121,5 +128,16 @@ extension HTTPSSETransport {
 			("Content-Type", "application/json"),
 			("Mcp-Session-Id", sessionID.uuidString)
 		], body: jsonData)
+	}
+}
+
+/// An error that fails an upload whose body passed the size limit.
+struct UploadTooLargeError: LocalizedError {
+	/// The most bytes one upload may hold.
+	let limit: Int
+
+	/// A message that names the limit.
+	var errorDescription: String? {
+		"The upload is larger than \(limit) bytes."
 	}
 }
