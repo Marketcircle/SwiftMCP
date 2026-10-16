@@ -66,6 +66,11 @@ actor SessionManager {
             await session.setTransport(transport)
         }
 
+        // The second guard catches a channel that closed during the awaits above.
+        guard channel.isActive else {
+            await session.setChannel(nil)
+            return
+        }
         sessions[id] = session
     }
 
@@ -168,6 +173,7 @@ actor SessionManager {
         if let current = await session.channel, current !== channel {
             return
         }
+        guard sessions[id] === session else { return }
         await removeSession(id: id)
     }
 
