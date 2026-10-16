@@ -61,6 +61,9 @@ actor PendingUploadStore {
     func fulfill(cid: String, fileURL: URL) -> FulfillResult {
         guard let expectation = expectations.removeValue(forKey: cid) else {
             // No expectation yet — store as early arrival
+            if let replaced = earlyArrivals[cid], replaced.fileURL != fileURL {
+                try? FileManager.default.removeItem(at: replaced.fileURL)
+            }
             earlyArrivals[cid] = EarlyArrival(fileURL: fileURL, arrivedAt: Date())
             return .earlyArrival
         }

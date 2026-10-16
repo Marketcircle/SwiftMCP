@@ -44,6 +44,8 @@ extension HTTPSSETransport {
 			return RouteResponse(status: .badRequest, body: Data("Missing CID in upload path. Use POST /mcp/uploads/{cid}".utf8))
 		}
 
+		await pendingUploadStore.expireEarlyArrivals()
+
 		// Stream body chunks to a temp file
 		let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
 			.appendingPathComponent("mcp-upload-\(UUID().uuidString).bin")
@@ -54,11 +56,17 @@ extension HTTPSSETransport {
 			return RouteResponse(status: .internalServerError, body: Data("Failed to create temp file.".utf8))
 		}
 		var byteCount = 0
-		for await chunk in request.body {
-			handle.write(chunk)
-			byteCount += chunk.count
+		do {
+			for await chunk in request.body {
+				try handle.write(contentsOf: chunk)
+				byteCount += chunk.count
+			}
+			try handle.close()
+		} catch {
+			try? handle.close()
+			try? FileManager.default.removeItem(at: tempURL)
+			throw error
 		}
-		try handle.close()
 
 		guard byteCount > 0 else {
 			try? FileManager.default.removeItem(at: tempURL)
