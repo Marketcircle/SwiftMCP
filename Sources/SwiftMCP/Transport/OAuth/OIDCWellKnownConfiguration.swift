@@ -153,7 +153,6 @@ public struct OAuthConfiguration: Sendable {
 
     public func authorizationServerMetadata() -> AuthorizationServerMetadata {
         let regEndpoint = registrationEndpoint?.absoluteString
-        print("[OAuthConfiguration] registration_endpoint: \(String(describing: regEndpoint))")
         // Ensure authorization_endpoint ends with /authorize
         let authEndpoint: String
         if authorizationEndpoint.path.hasSuffix("/authorize") {
@@ -173,7 +172,6 @@ public struct OAuthConfiguration: Sendable {
             registration_endpoint: regEndpoint,
             code_challenge_methods_supported: ["S256"]
         )
-        print("[OAuthConfiguration] authorizationServerMetadata: \(meta)")
         return meta
     }
 
