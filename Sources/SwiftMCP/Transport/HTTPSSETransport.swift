@@ -53,6 +53,9 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// The lifetime in seconds of an access token that comes without `expires_in`.
     static let defaultAccessTokenLifetime = 60 * 60
 
+    /// The seconds a session without an open stream may sit idle before the keep-alive tick removes it, 30 minutes by default.
+    public var sessionIdleTimeout: TimeInterval = 30 * 60
+
     /// A Boolean value indicating whether URLs the server hands out honor the `X-Forwarded-Host`, `X-Forwarded-Proto`, and `X-Forwarded-Port` headers.
     public var trustsForwardedHeaders: Bool = false
     
@@ -376,6 +379,8 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     internal func sendKeepAlive() {
         Task { [weak self] in
             guard let self = self else { return }
+
+            await self.sessionManager.removeIdleSessions(olderThan: self.sessionIdleTimeout)
 
             switch self.keepAliveMode {
                 case .none:

@@ -35,6 +35,7 @@ actor SessionManager {
             if await existing.transport == nil {
                 await existing.setTransport(transport)
             }
+            await existing.markActive()
             return existing
         }
 
@@ -157,6 +158,16 @@ actor SessionManager {
             await session.setChannel(nil)
         }
         sessions.removeValue(forKey: id)
+    }
+
+    /// Removes every session without an open channel whose last request is older than the given number of seconds.
+    func removeIdleSessions(olderThan interval: TimeInterval) async {
+        let cutoff = Date().addingTimeInterval(-interval)
+        for (id, session) in sessions {
+            if await session.channel == nil, await session.lastActivity < cutoff {
+                await removeSession(id: id)
+            }
+        }
     }
     
     /// Get all session IDs.
