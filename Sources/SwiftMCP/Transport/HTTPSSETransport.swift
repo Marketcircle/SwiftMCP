@@ -42,7 +42,11 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     private let keepAliveLock = NSLock()
     /// The number of connections open now.
     private var openConnections = 0
-    /// The lock that guards ``openConnections``.
+    /// The connection cap in force, set from ``maxConnections`` and the open-file limit when the server starts.
+    private var connectionLimit = Int.max
+    /// The number of connections refused since the server last took one.
+    private var refusedInARow = 0
+    /// The lock that guards ``openConnections``, ``connectionLimit``, and ``refusedInARow``.
     private let connectionLock = NSLock()
 
     /// The HTTP router that dispatches incoming requests to route handlers.
@@ -63,7 +67,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// The seconds one request body may take in total, 300 by default. Zero or less turns the deadline off.
     public var requestBodyDeadline: TimeInterval = 300
 
-    /// The most connections the server keeps open at once, 256 by default. A connection past the cap closes right away.
+    /// The most connections the server keeps open at once, 256 by default and never more than half the open-file limit. Zero or less removes the cap.
     public var maxConnections: Int = 256
 
     /// The most sessions the server keeps at once, 64 by default.
@@ -321,14 +325,19 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     // MARK: - Server Lifecycle
 
     public func start() async throws {
+        let limit = effectiveConnectionLimit()
+        connectionLock.withLock { connectionLimit = limit }
+
         let bootstrap = ServerBootstrap(group: group)
 			.serverChannelOption(ChannelOptions.backlog, value: 256)
 			.serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
 			.childChannelInitializer {  channel in
-            guard self.admitConnection() else {
-                self.logger.warning("Refused a connection because \(self.maxConnections) are open")
-                channel.close(promise: nil)
-                return channel.eventLoop.makeSucceededVoidFuture()
+            let admission = self.admitConnection()
+            guard admission.admitted else {
+                if admission.logRefusal {
+                    self.logger.warning("Refusing new connections because the connection cap is reached")
+                }
+                return channel.eventLoop.makeFailedFuture(ConnectionLimitError())
             }
             channel.closeFuture.whenComplete { _ in
                 self.releaseConnection()
@@ -620,16 +629,31 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         return router
     }
 
-    /// Counts a new connection and returns whether it fits under ``maxConnections``.
-    private func admitConnection() -> Bool {
+    /// Returns ``maxConnections`` capped at half the open-file limit, or no cap when it is zero or less.
+    private func effectiveConnectionLimit() -> Int {
+        guard maxConnections > 0 else { return .max }
+        var limit = rlimit()
+        guard getrlimit(RLIMIT_NOFILE, &limit) == 0 else { return maxConnections }
+        let half = max(Int(clamping: limit.rlim_cur / 2), 1)
+        guard half < maxConnections else { return maxConnections }
+        logger.notice("Capping connections at \(half), half the open-file limit")
+        return half
+    }
+
+    /// Counts a new connection when it fits under the cap, and returns whether it fits and whether to log the refusal.
+    private func admitConnection() -> (admitted: Bool, logRefusal: Bool) {
         connectionLock.withLock {
-            guard openConnections < maxConnections else { return false }
+            guard openConnections < connectionLimit else {
+                refusedInARow += 1
+                return (false, refusedInARow == 1)
+            }
             openConnections += 1
-            return true
+            refusedInARow = 0
+            return (true, false)
         }
     }
 
-    /// Counts a connection that closed.
+    /// Removes a closed connection from the count.
     private func releaseConnection() {
         connectionLock.withLock {
             openConnections -= 1
@@ -648,3 +672,6 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         trustsForwardedHeaders ? request.header(name) : nil
     }
 }
+
+/// An error that refuses a connection past the connection cap.
+struct ConnectionLimitError: Error {}
