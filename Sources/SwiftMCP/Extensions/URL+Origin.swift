@@ -8,7 +8,7 @@
 import Foundation
 
 extension URL {
-    /// Returns whether this URL and the given one share a scheme, host, and port, with a missing port read as the scheme's default.
+    /// Returns whether the URLs share a scheme, host, and port, reading a missing port as the scheme's default.
     func hasSameOrigin(as other: URL) -> Bool {
         guard let host = host?.lowercased(), let otherHost = other.host?.lowercased() else {
             return false

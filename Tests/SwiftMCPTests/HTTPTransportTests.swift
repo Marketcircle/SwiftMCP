@@ -574,7 +574,7 @@ struct HTTPTransportTests {
 		var stream = URLRequest(url: baseURL.appendingPathComponent("mcp"))
 		stream.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 		stream.setValue(sessionID, forHTTPHeaderField: "Mcp-Session-Id")
-		// The first stream runs in a task because bytes(for:) waits for body bytes.
+		// A task holds the first stream open.
 		let streamRequest = stream
 		let firstStream = Task { _ = try await URLSession(configuration: .ephemeral).bytes(for: streamRequest) }
 		defer { firstStream.cancel() }

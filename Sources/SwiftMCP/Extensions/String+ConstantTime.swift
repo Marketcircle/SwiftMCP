@@ -8,7 +8,7 @@
 import Foundation
 
 extension String {
-    /// Returns whether the two strings hold the same UTF-8 bytes, comparing every byte whatever the first difference.
+    /// Returns whether the strings hold the same UTF-8 bytes, checking every byte.
     func constantTimeEquals(_ other: String) -> Bool {
         let bytes = Array(utf8)
         let otherBytes = Array(other.utf8)
