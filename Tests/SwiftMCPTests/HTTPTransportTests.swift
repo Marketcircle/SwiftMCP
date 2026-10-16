@@ -739,6 +739,32 @@ struct HTTPTransportTests {
 
 	// MARK: - Error cases
 
+	/// Checks that requests failing authorization leave no session behind.
+	@Test("Failed authorization stores no session")
+	func failedAuthorizationStoresNoSession() async throws {
+		let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
+		transport.authorizationHandler = { _ in .unauthorized("No token") }
+		try await transport.start()
+		defer { Task { try? await transport.stop() } }
+		let baseURL = URL(string: "http://127.0.0.1:\(transport.port)")!
+		let session = URLSession(configuration: .ephemeral)
+
+		var post = URLRequest(url: baseURL.appendingPathComponent("mcp"))
+		post.httpMethod = "POST"
+		post.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		post.setValue("application/json", forHTTPHeaderField: "Accept")
+		post.httpBody = try encode(initializeRequest())
+		let (_, postResponse) = try await session.data(for: post)
+		#expect((postResponse as? HTTPURLResponse)?.statusCode == 401)
+
+		var sse = URLRequest(url: baseURL.appendingPathComponent("sse"))
+		sse.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+		let (_, sseResponse) = try await session.data(for: sse)
+		#expect((sseResponse as? HTTPURLResponse)?.statusCode == 401)
+
+		#expect(await transport.sessionManager.sessions.isEmpty)
+	}
+
 	@Test("POST /mcp: missing body returns 400")
 	func missingBody() async throws {
 		let (transport, baseURL) = try await startTransport()
