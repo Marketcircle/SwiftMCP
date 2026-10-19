@@ -536,7 +536,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// and return the `AsyncStream<Data>` for the route handler to include
     /// in its response. Does **not** touch the NIO channel.
     ///
-    /// Returns `nil` when the session already has a stream, when it is missing and `createsSession` is false, or when creating it would pass ``maxSessions``.
+    /// Returns `nil` when the session already has a stream, is missing with `createsSession` off, or would pass ``maxSessions``.
     func prepareSSEStream(sessionID: UUID, createsSession: Bool = true) async -> AsyncStream<Data>? {
         let session: Session
         if createsSession {

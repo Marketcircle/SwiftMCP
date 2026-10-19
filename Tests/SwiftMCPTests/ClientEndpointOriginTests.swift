@@ -52,7 +52,7 @@ struct ClientEndpointOriginTests {
         #expect(!SameOriginRedirectDelegate.allowsRedirect(from: nil, to: original))
     }
 
-    /// Checks that a same-origin session follows a redirect on its origin and delivers one to another origin unfollowed.
+    /// Checks that a same-origin session follows only redirects on its own origin.
     @Test func sessionFollowsOnlySameOriginRedirects() async throws {
         let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
         transport.addRoute(.POST, "/away") { _ in

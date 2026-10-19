@@ -38,7 +38,7 @@ struct PendingUploadStoreTests {
         #expect(await !store.isExpectedOrArrived(cid: "file"))
     }
 
-    /// Checks that a failure before the wait fails the wait once it starts.
+    /// Checks that an early failure fails the wait that follows.
     @Test func earlyFailureFailsTheLaterWait() async {
         let store = PendingUploadStore()
         await store.fail(cid: "file", error: UploadTooLargeError(limit: 1))

@@ -17,7 +17,7 @@ final class SSEStreamingDelegate: NSObject, URLSessionDataDelegate, @unchecked S
     private(set) var response: URLResponse?
     private let responseContinuation: CheckedContinuation<URLResponse, Never>?
 
-    /// Follows a redirect only on the stream request's origin, and delivers the redirect response otherwise.
+    /// Follows a redirect only when it stays on the stream request's origin.
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
         completionHandler(SameOriginRedirectDelegate.allowsRedirect(from: task.originalRequest?.url, to: request.url) ? request : nil)
     }

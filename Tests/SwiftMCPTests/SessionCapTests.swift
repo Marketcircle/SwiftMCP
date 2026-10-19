@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import SwiftMCP
 
-/// Tests how the session manager holds its cap when sessions are created at once.
+/// Tests the session cap under concurrent creation.
 @Suite("Session cap")
 struct SessionCapTests {
     /// Checks that creations racing for the last slots never pass the limit.
@@ -18,7 +18,7 @@ struct SessionCapTests {
         #expect(await manager.sessions.count == 5)
     }
 
-    /// Checks that an existing session comes back whatever the limit, and a new one past it does not.
+    /// Checks that the limit applies only to new sessions.
     @Test func existingSessionIgnoresTheLimit() async {
         let manager = SessionManager()
         let id = UUID()
