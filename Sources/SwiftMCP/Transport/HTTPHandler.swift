@@ -28,6 +28,8 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
     private var requestCount = 0
     /// The number of the last request whose response has started.
     private var answeredCount = 0
+    /// The number of the last request whose response has been written in full.
+    private var respondedCount = 0
     private let transport: HTTPSSETransport
     let id = UUID()
 
@@ -49,6 +51,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
     /// Starts waiting for the first request head and passes the event on.
     func channelActive(context: ChannelHandlerContext) {
         restartReadTimer(context: context)
+        transport.markConnectionIdle(context.channel)
         context.fireChannelActive()
     }
 
@@ -85,6 +88,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
         // HEAD — create stream and dispatch handler immediately
         case (.head(let head), _):
             requestCount += 1
+            transport.markConnectionBusy(context.channel)
             let sizeLimit = maxBodySize(for: head)
             if let contentLength = head.headers.first(name: "content-length"),
                let length = Int(contentLength), length > sizeLimit {
@@ -132,7 +136,12 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
 
         // END — finish the stream
         case (.end, .streaming(_, let continuation, _)):
-            defer { requestState = .idle }
+            defer {
+                requestState = .idle
+                if respondedCount == requestCount {
+                    transport.markConnectionIdle(context.channel)
+                }
+            }
             cancelRequestTimers()
             continuation.finish()
 
@@ -165,6 +174,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
               let routeMatch = transport.router.match(method: method, path: path) else {
             if claimResponse(for: requestNumber) {
                 sendResponse(channel: channel, status: .notFound)
+                respondedCount = requestNumber
             }
             return
         }
@@ -210,6 +220,9 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
             }
 
             await self.writeRouteResponse(response, to: channel)
+            channel.eventLoop.execute {
+                self.finishResponse(for: requestNumber, on: channel)
+            }
         }
     }
 
@@ -267,6 +280,14 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
     private func startBodyDeadline(context: ChannelHandlerContext) {
         bodyDeadline?.cancel()
         bodyDeadline = schedule(after: transport.requestBodyDeadline, context: context)
+    }
+
+    /// Records that the given request's response is written, and marks the connection idle when no request is in progress.
+    private func finishResponse(for request: Int, on channel: Channel) {
+        respondedCount = max(respondedCount, request)
+        if requestCount == request, case .idle = requestState {
+            transport.markConnectionIdle(channel)
+        }
     }
 
     /// Marks the given request as answered and returns whether no response had started for it yet.
