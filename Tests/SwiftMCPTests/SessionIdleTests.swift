@@ -40,4 +40,22 @@ struct SessionIdleTests {
         try await Task.sleep(for: .milliseconds(200))
         #expect(await session.responseTasks.isEmpty)
     }
+
+    /// Checks that idle sessions are still swept after keep-alive messages are turned off.
+    @Test func idleSweepRunsWithoutKeepAlive() async throws {
+        let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
+        transport.sessionIdleTimeout = 0.1
+        transport.sessionSweepInterval = 0.05
+        try await transport.start()
+        defer { Task { try? await transport.stop() } }
+        transport.keepAliveMode = .none
+
+        let id = UUID()
+        _ = await transport.sessionManager.session(id: id)
+        let deadline = Date().addingTimeInterval(3)
+        while await transport.sessionManager.existingSession(id: id) != nil, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(await transport.sessionManager.existingSession(id: id) == nil)
+    }
 }
