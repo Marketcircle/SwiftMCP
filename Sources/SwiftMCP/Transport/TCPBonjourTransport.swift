@@ -382,7 +382,7 @@ public final class TCPBonjourTransport: Transport, @unchecked Sendable {
         let connectionID = UUID()
 
         Task {
-            let session = await sessionManager.session(id: connectionID)
+            guard let session = await sessionManager.session(id: connectionID) else { return }
 
             connection.stateUpdateHandler = { [weak self] state in
                 guard let self else { return }

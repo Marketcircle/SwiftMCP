@@ -37,6 +37,8 @@ extension HTTPSSETransport {
 			return RouteResponse(status: .unauthorized, body: Data("Unauthorized: \(message)".utf8))
 		case .jweNotSupported(let message):
 			return RouteResponse(status: .forbidden, body: Data(message.utf8))
+		case .tooManySessions:
+			return RouteResponse(status: .serviceUnavailable)
 		case .authorized:
 			break
 		}

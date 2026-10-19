@@ -64,6 +64,8 @@ extension HTTPSSETransport {
 		case .jweNotSupported(let message):
 			let errorMessage = JSONRPCMessage.errorResponse(id: nil, error: .init(code: -32000, message: message))
 			return .json(errorMessage, status: .forbidden, sessionId: sid)
+		case .tooManySessions:
+			return RouteResponse(status: .serviceUnavailable)
 		case .authorized:
 			break
 		}
@@ -76,7 +78,10 @@ extension HTTPSSETransport {
 		do {
 			let messages = try JSONRPCMessage.decodeMessages(from: body)
 
-			let result: RouteResponse = await sessionManager.session(id: sessionID).work { session in
+			guard let session = await sessionManager.session(id: sessionID, limit: maxSessions) else {
+				return RouteResponse(status: .serviceUnavailable)
+			}
+			let result: RouteResponse = await session.work { session in
 
 				if await session.hasActiveConnection {
 					// Process messages and stream responses via SSE
@@ -168,6 +173,8 @@ extension HTTPSSETransport {
 		case .jweNotSupported(let message):
 			logger.warning("JWE token not supported for SSE connect: \(message)")
 			return RouteResponse(status: .forbidden)
+		case .tooManySessions:
+			return RouteResponse(status: .serviceUnavailable)
 		case .authorized:
 			break
 		}
@@ -175,7 +182,7 @@ extension HTTPSSETransport {
 		// Create the SSE stream — events will be yielded into it by Session.sendSSE
 		guard let stream = await prepareSSEStream(sessionID: sessionID, createsSession: !reattaching) else {
 			if await sessionManager.existingSession(id: sessionID) == nil {
-				return .unknownSession
+				return reattaching ? .unknownSession : RouteResponse(status: .serviceUnavailable)
 			}
 			logger.warning("Refused a second stream for session \(sessionID)")
 			return RouteResponse(status: .conflict)
@@ -229,6 +236,8 @@ extension HTTPSSETransport {
 			return RouteResponse(status: .unauthorized, body: Data("Unauthorized: \(message)".utf8))
 		case .jweNotSupported(let message):
 			return RouteResponse(status: .forbidden, body: Data(message.utf8))
+		case .tooManySessions:
+			return RouteResponse(status: .serviceUnavailable)
 		case .authorized:
 			break
 		}

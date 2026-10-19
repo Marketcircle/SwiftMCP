@@ -61,7 +61,7 @@ struct OAuthTests {
         let sessionID = UUID()
         
         // Create a session and store a token
-        let session = await sessionManager.session(id: sessionID)
+        let session = try #require(await sessionManager.session(id: sessionID))
         await session.setAccessToken("test-token")
         await session.setAccessTokenExpiry(Date().addingTimeInterval(3600))
         

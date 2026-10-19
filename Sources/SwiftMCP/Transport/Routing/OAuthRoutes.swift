@@ -281,7 +281,10 @@ extension HTTPSSETransport {
 
 					let expiresIn = tokenResponse.expiresIn ?? Self.defaultAccessTokenLifetime
 
-					await sessionManager.session(id: sessionUUID).work { s in
+					guard let session = await sessionManager.session(id: sessionUUID, limit: maxSessions) else {
+						return RouteResponse(status: .serviceUnavailable, body: Data("Too many sessions.".utf8))
+					}
+					await session.work { s in
 						await s.setAccessToken(tokenResponse.accessToken)
 						await s.setAccessTokenExpiry(Date().addingTimeInterval(TimeInterval(expiresIn)))
 						await s.setIDToken(tokenResponse.idToken)

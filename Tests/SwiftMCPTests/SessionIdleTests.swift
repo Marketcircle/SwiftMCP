@@ -22,7 +22,7 @@ struct SessionIdleTests {
     @Test func requestMarksSessionActive() async throws {
         let manager = SessionManager()
         let id = UUID()
-        let session = await manager.session(id: id)
+        let session = try #require(await manager.session(id: id))
         let first = await session.lastActivity
 
         try await Task.sleep(nanoseconds: 10_000_000)
@@ -34,7 +34,7 @@ struct SessionIdleTests {
     @Test func pingSkipsSessionsWithoutStream() async throws {
         let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
         transport.keepAliveMode = .ping
-        let session = await transport.sessionManager.session(id: UUID())
+        let session = try #require(await transport.sessionManager.session(id: UUID()))
 
         transport.sendKeepAlive()
         try await Task.sleep(for: .milliseconds(200))
