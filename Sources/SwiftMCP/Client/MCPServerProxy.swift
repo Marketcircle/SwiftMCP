@@ -71,6 +71,8 @@ public final actor MCPServerProxy: Sendable {
 
 
     public private(set) var endpointURL: URL?
+    /// The session that carries requests to the server, kept until ``disconnect()``.
+    private var httpSession: URLSession?
     public private(set) var sessionID: String?
     private var streamTask: Task<Void, Error>?
 
@@ -250,6 +252,8 @@ public final actor MCPServerProxy: Sendable {
 
         streamTask?.cancel()
         streamTask = nil
+        httpSession?.invalidateAndCancel()
+        httpSession = nil
         endpointURL = nil
 
         switch config {
@@ -386,9 +390,7 @@ public final actor MCPServerProxy: Sendable {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        let session = URLSession.sameOrigin()
-        defer { session.finishTasksAndInvalidate() }
-        let (responseData, response) = try await session.data(for: request)
+        let (responseData, response) = try await requestSession().data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               (200...201).contains(httpResponse.statusCode) else {
@@ -605,8 +607,7 @@ public final actor MCPServerProxy: Sendable {
             guard let messageId = messageId else {
                 throw MCPServerProxyError.communicationError("Message must have an ID")
             }
-            let session = URLSession.sameOrigin()
-            defer { session.finishTasksAndInvalidate() }
+            let session = requestSession()
             var urlRequest = URLRequest(url: endpointURL)
             urlRequest.httpMethod = "POST"
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -901,8 +902,7 @@ public final actor MCPServerProxy: Sendable {
         guard let endpointURL = endpointURL else { return }
         guard case .sse(let sseConfig) = config else { return }
         let response = JSONRPCMessage.response(id: request.id, result: [:])
-        let session = URLSession.sameOrigin()
-        defer { session.finishTasksAndInvalidate() }
+        let session = requestSession()
         var urlRequest = URLRequest(url: endpointURL)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1348,7 +1348,7 @@ public final actor MCPServerProxy: Sendable {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
         streamTask = Task {
-            defer { session.finishTasksAndInvalidate() }
+            defer { session.invalidateAndCancel() }
             do {
                 let (asyncBytes, response) = try await session.bytes(for: request)
                 self.handleSSEResponse(response, sseConfig: sseConfig, isStreamableMCP: isStreamableMCP)
@@ -1403,6 +1403,7 @@ public final actor MCPServerProxy: Sendable {
         task.resume()
 
         streamTask = Task {
+            defer { session.invalidateAndCancel() }
             do {
                 for try await message in delegate.lines.sseMessages() {
                     await self.processIncomingMessage(event: message.event, data: message.data)
@@ -1437,6 +1438,16 @@ public final actor MCPServerProxy: Sendable {
                 endpointURL = endpoint
             }
         }
+    }
+
+    /// Returns the session for requests to the server, creating it on first use.
+    private func requestSession() -> URLSession {
+        if let httpSession {
+            return httpSession
+        }
+        let session = URLSession.sameOrigin()
+        httpSession = session
+        return session
     }
 
     private func waitForEndpointIfNeeded(isStreamableMCP: Bool) async throws {
