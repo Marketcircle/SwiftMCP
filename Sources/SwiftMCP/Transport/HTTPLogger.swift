@@ -32,10 +32,8 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
         lock.withLock {
             switch reqPart {
                 case .head(let head):
-                    // Check if this is an SSE connection
-                    if head.uri.hasPrefix("/sse") || (head.uri.hasPrefix("/mcp") && head.method == .GET) {
-                        isSSEConnection = true
-                    }
+                    // Each request decides anew whether it opens a stream.
+                    isSSEConnection = head.uri.hasPrefix("/sse") || (head.uri.hasPrefix("/mcp") && head.method == .GET)
 
                     // Log previous request if exists
                     logCurrentRequest()
@@ -68,12 +66,14 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
             switch resPart {
                 case .head(let head):
                     // For SSE connections, only log the initial response headers
-                    if isSSEConnection {
+                    if isSSEConnection, head.status == .ok {
                         var log = "HTTP/\(head.version.major).\(head.version.minor) \(head.status.code) \(head.status.reasonPhrase)\n"
                         log += Self.headerLines(head.headers)
                         log += "\n"
                         sseLogger.info("Connection Established:\n\(log)")
                     } else {
+                        // A refused stream request gets an ordinary response.
+                        isSSEConnection = false
                         // Log previous response if exists
                         logCurrentResponse()
                         currentResponseHead = head
@@ -85,7 +85,9 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
                         if let str = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) {
                             if isSSEConnection {
                                 // For SSE, log each message immediately
-                                sseLogger.trace("SSE: \(str.truncatedForLog)")
+                                if logsBodies {
+                                    sseLogger.trace("SSE: \(str.truncatedForLog)")
+                                }
                             } else if logsBodies, httpLogger.logLevel <= .trace {
                                 currentResponseBody += str
                             }
