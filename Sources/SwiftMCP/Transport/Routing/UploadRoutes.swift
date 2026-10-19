@@ -56,10 +56,12 @@ extension HTTPSSETransport {
 		let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
 			.appendingPathComponent("mcp-upload-\(UUID().uuidString).bin")
 		guard FileManager.default.createFile(atPath: tempURL.path, contents: nil) else {
+			await pendingUploadStore.fail(cid: cid, error: UploadStorageError())
 			return RouteResponse(status: .internalServerError, body: Data("Failed to create temp file.".utf8))
 		}
 		guard let handle = FileHandle(forWritingAtPath: tempURL.path) else {
 			try? FileManager.default.removeItem(at: tempURL)
+			await pendingUploadStore.fail(cid: cid, error: UploadStorageError())
 			return RouteResponse(status: .internalServerError, body: Data("Failed to create temp file.".utf8))
 		}
 		var byteCount = 0
@@ -72,6 +74,7 @@ extension HTTPSSETransport {
 		} catch {
 			try? handle.close()
 			try? FileManager.default.removeItem(at: tempURL)
+			await pendingUploadStore.fail(cid: cid, error: error)
 			throw error
 		}
 
@@ -161,5 +164,13 @@ struct UploadInterruptedError: LocalizedError {
 	/// A message saying the upload ended early.
 	var errorDescription: String? {
 		"The upload ended before its body arrived."
+	}
+}
+
+/// An error that fails an upload the server could not store.
+struct UploadStorageError: LocalizedError {
+	/// A message saying the server could not store the upload.
+	var errorDescription: String? {
+		"The server could not store the upload."
 	}
 }
