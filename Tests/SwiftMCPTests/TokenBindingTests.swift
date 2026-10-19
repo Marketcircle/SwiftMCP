@@ -45,6 +45,19 @@ struct TokenBindingTests {
         #expect(await !transport.authorize("good", sessionID: nil).isAuthorized)
     }
 
+    /// Checks that authorizing a request for an existing session refreshes its activity.
+    @Test func authorizationRefreshesActivity() async throws {
+        let transport = makeTransport()
+        let id = UUID()
+        #expect(await transport.authorize("good", sessionID: id).isAuthorized)
+        let session = try #require(await transport.sessionManager.existingSession(id: id))
+        let first = await session.lastActivity
+
+        try await Task.sleep(for: .milliseconds(10))
+        #expect(await transport.authorize("good", sessionID: id).isAuthorized)
+        #expect(await session.lastActivity > first)
+    }
+
     /// Checks that the constant-time compare matches only identical strings.
     @Test func constantTimeCompare() {
         #expect("token".constantTimeEquals("token"))

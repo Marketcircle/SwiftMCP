@@ -124,7 +124,11 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         // 1. If we have a session ID, check token against session-stored value
         if let id = sessionID {
             if let session = await sessionManager.existingSession(id: id) {
-                return await authorize(token, session: session)
+                let result = await authorize(token, session: session)
+                if result.isAuthorized {
+                    await session.markActive()
+                }
+                return result
             }
             return await authorizeNewSession(id: id, token: token)
         }
