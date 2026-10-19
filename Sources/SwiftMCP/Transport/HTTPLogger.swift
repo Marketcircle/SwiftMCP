@@ -143,7 +143,7 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
 
     /// Returns whether a log line may show the bodies of a request to the given URI, parsed like the router.
     static func showsBodies(for uri: String) -> Bool {
-        let path = uri.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first ?? ""
+        let path = uri.prefix { $0 != "?" }
         guard let root = path.split(separator: "/", omittingEmptySubsequences: true).first else { return true }
         return !credentialRoots.contains(String(root))
     }

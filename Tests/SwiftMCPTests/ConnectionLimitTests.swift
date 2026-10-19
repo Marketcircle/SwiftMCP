@@ -41,6 +41,7 @@ struct ConnectionLimitTests {
         #else
         let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
         transport.maxConnections = 2
+        transport.minimumIdleAge = 0.2
         try await transport.start()
         defer { Task { try? await transport.stop() } }
 
@@ -51,14 +52,41 @@ struct ConnectionLimitTests {
         let second = connectSocket(port: transport.port)
         defer { close(second) }
         #expect(answerLength(on: second) > 0)
+        try await Task.sleep(for: .milliseconds(300))
 
         let third = connectSocket(port: transport.port)
         defer { close(third) }
         #expect(answerLength(on: third) > 0)
 
         var buffer = [UInt8](repeating: 0, count: 64)
-        #expect(recv(first, &buffer, buffer.count, 0) <= 0)
+        let firstRead = recv(first, &buffer, buffer.count, 0)
+        #expect(firstRead == 0 || (firstRead < 0 && errno == ECONNRESET))
         #expect(answerLength(on: second) > 0)
+        #endif
+    }
+
+    /// Checks that a new connection at the cap is refused while the idle connections are younger than the minimum age.
+    @Test func recentlyIdleConnectionsAreNotEvicted() async throws {
+        #if canImport(FoundationNetworking)
+        // The test does not run on Linux.
+        return
+        #else
+        let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
+        transport.maxConnections = 2
+        try await transport.start()
+        defer { Task { try? await transport.stop() } }
+
+        let first = connectSocket(port: transport.port)
+        defer { close(first) }
+        #expect(answerLength(on: first) > 0)
+        let second = connectSocket(port: transport.port)
+        defer { close(second) }
+        #expect(answerLength(on: second) > 0)
+
+        let third = connectSocket(port: transport.port)
+        defer { close(third) }
+        #expect(answerLength(on: third) == 0)
+        #expect(answerLength(on: first) > 0)
         #endif
     }
 
