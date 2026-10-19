@@ -92,6 +92,8 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         case authorized
         case unauthorized(String)
         case jweNotSupported(String)
+        /// The server has no room for another session.
+        case tooManySessions
 
         /// A Boolean value indicating whether the result lets the request through.
         var isAuthorized: Bool {
@@ -175,7 +177,10 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         guard await validateNewToken(token) else {
             return .unauthorized("Invalid token - token exchange required")
         }
-        await bind(token, to: sessionManager.session(id: id))
+        guard let session = await sessionManager.session(id: id, limit: maxSessions) else {
+            return .tooManySessions
+        }
+        await bind(token, to: session)
         return .authorized
     }
 
@@ -269,6 +274,8 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         case .unauthorized:
             return false
         case .jweNotSupported:
+            return false
+        case .tooManySessions:
             return false
         }
     }
@@ -529,11 +536,12 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// and return the `AsyncStream<Data>` for the route handler to include
     /// in its response. Does **not** touch the NIO channel.
     ///
-    /// Returns `nil` when the session already has a stream, or when it is missing and `createsSession` is false.
+    /// Returns `nil` when the session already has a stream, when it is missing and `createsSession` is false, or when creating it would pass ``maxSessions``.
     func prepareSSEStream(sessionID: UUID, createsSession: Bool = true) async -> AsyncStream<Data>? {
         let session: Session
         if createsSession {
-            session = await sessionManager.session(id: sessionID)
+            guard let created = await sessionManager.session(id: sessionID, limit: maxSessions) else { return nil }
+            session = created
         } else {
             guard let existing = await sessionManager.existingSession(id: sessionID) else { return nil }
             await existing.markActive()
@@ -570,7 +578,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// Send a message to a specific client.
     func sendSSE(_ message: SSEMessage, to sessionID: UUID) {
         Task {
-            let session = await sessionManager.session(id: sessionID)
+            guard let session = await sessionManager.existingSession(id: sessionID) else { return }
             await session.sendSSE(message)
         }
     }

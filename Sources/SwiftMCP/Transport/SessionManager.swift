@@ -29,8 +29,8 @@ actor SessionManager {
         sessions[id]
     }
 
-    /// Retrieve or create a session for the given identifier.
-    func session(id: UUID) async -> Session {
+    /// Retrieve or create a session for the given identifier, or nil when creating one would pass the given limit.
+    func session(id: UUID, limit: Int = .max) async -> Session? {
         if let existing = sessions[id] {
             if await existing.transport == nil {
                 await existing.setTransport(transport)
@@ -39,9 +39,11 @@ actor SessionManager {
             return existing
         }
 
+        guard sessions.count < limit else { return nil }
         let session = Session(id: id)
-        await session.setTransport(transport)
+        // The slot is taken before the first suspension point.
         sessions[id] = session
+        await session.setTransport(transport)
         return session
     }
 
@@ -51,14 +53,8 @@ actor SessionManager {
     ///   - id: The unique identifier for the channel.
     ///   - transport: Transport associated with the session.
     func register(channel: Channel, id: UUID) async {
-        // The guard skips a channel that already closed.
-        guard channel.isActive else { return }
-        let session: Session
-        if let existing = sessions[id] {
-            session = existing
-        } else {
-            session = Session(id: id, channel: channel)
-        }
+        // The guard skips a channel that already closed, and one whose session is gone.
+        guard channel.isActive, let session = sessions[id] else { return }
 
         await session.setChannel(channel)
 

@@ -55,6 +55,8 @@ extension HTTPSSETransport {
 		case .jweNotSupported(let message):
 			let err = JSONRPCMessage.errorResponse(id: nil, error: .init(code: -32000, message: message))
 			return RouteResponse.json(err, status: .forbidden, sessionId: sessionID.uuidString)
+		case .tooManySessions:
+			return RouteResponse(status: .serviceUnavailable)
 		case .authorized:
 			break
 		}
