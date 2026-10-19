@@ -282,7 +282,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
         bodyDeadline = schedule(after: transport.requestBodyDeadline, context: context)
     }
 
-    /// Records that the given request's response is written, and marks the connection idle when no request is in progress.
+    /// Records a written response and marks the connection idle when no request is in progress.
     private func finishResponse(for request: Int, on channel: Channel) {
         respondedCount = max(respondedCount, request)
         if requestCount == request, case .idle = requestState {

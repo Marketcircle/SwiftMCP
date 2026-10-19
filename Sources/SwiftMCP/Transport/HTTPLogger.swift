@@ -141,7 +141,7 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
     /// The first path segments of the OAuth routes, whose bodies a log line never shows.
     static let credentialRoots: Set<String> = ["authorize", "oauth", "userinfo", "u"]
 
-    /// Returns whether a log line may show the bodies of a request to the given URI, reading its path the way the router does.
+    /// Returns whether a log line may show the bodies of a request to the given URI, parsed like the router.
     static func showsBodies(for uri: String) -> Bool {
         let path = uri.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first ?? ""
         guard let root = path.split(separator: "/", omittingEmptySubsequences: true).first else { return true }

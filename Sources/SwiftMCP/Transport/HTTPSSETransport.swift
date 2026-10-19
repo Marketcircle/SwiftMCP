@@ -73,7 +73,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
 
     /// The most connections the server keeps open at once, 256 by default and never more than half the open-file limit. Zero or less removes the cap. The server reads it in ``start()``.
     ///
-    /// At the cap, a new connection closes the connection that has waited longest for its next request, or is refused when every connection is busy.
+    /// At the cap, a new connection closes the longest-idle connection, or is refused when none is idle.
     public var maxConnections: Int = 256
 
     /// The most sessions the server keeps at once, 64 by default.
@@ -701,7 +701,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
 
     /// The outcome of a new connection against the connection cap.
     private enum Admission {
-        /// The connection is taken, closing the given idle connection to make room when one is named.
+        /// The connection is taken, closing the given idle connection when there is one.
         case admitted(evicting: Channel?)
         /// The connection is refused, and the refusal is logged when the flag is set.
         case refused(logRefusal: Bool)
