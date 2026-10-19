@@ -37,4 +37,44 @@ struct PendingUploadStoreTests {
         #expect(!FileManager.default.fileExists(atPath: file.path))
         #expect(await !store.isExpectedOrArrived(cid: "file"))
     }
+
+    /// Checks that a failure before the wait fails the wait once it starts.
+    @Test func earlyFailureFailsTheLaterWait() async {
+        let store = PendingUploadStore()
+        await store.fail(cid: "file", error: UploadTooLargeError(limit: 1))
+        await #expect(throws: UploadTooLargeError.self) {
+            _ = try await store.waitForUpload(cid: "file", progressToken: nil, sessionID: UUID())
+        }
+        #expect(await store.earlyFailures.isEmpty)
+    }
+
+    /// Checks that an upload arriving after an early failure replaces it.
+    @Test func arrivalReplacesEarlyFailure() async {
+        let store = PendingUploadStore()
+        let file = makeTempFile()
+        defer { try? FileManager.default.removeItem(at: file) }
+        await store.fail(cid: "file", error: UploadTooLargeError(limit: 1))
+        await store.fulfill(cid: "file", fileURL: file)
+        #expect(await store.earlyFailures.isEmpty)
+        #expect(await store.isExpectedOrArrived(cid: "file"))
+    }
+
+    /// Checks that expiring drops old early failures.
+    @Test func expiredEarlyFailureIsDropped() async {
+        let store = PendingUploadStore()
+        await store.fail(cid: "file", error: UploadTooLargeError(limit: 1))
+        await store.expireEarlyArrivals(olderThan: -1)
+        #expect(await store.earlyFailures.isEmpty)
+    }
+
+    /// Checks that the store keeps only the newest early failures up to its cap.
+    @Test func earlyFailuresAreCapped() async {
+        let store = PendingUploadStore()
+        for index in 0...PendingUploadStore.maxEarlyFailures {
+            await store.fail(cid: "file-\(index)", error: UploadTooLargeError(limit: 1))
+        }
+        #expect(await store.earlyFailures.count == PendingUploadStore.maxEarlyFailures)
+        #expect(await store.earlyFailures["file-0"] == nil)
+        #expect(await store.earlyFailures["file-\(PendingUploadStore.maxEarlyFailures)"] != nil)
+    }
 }

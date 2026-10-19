@@ -8,7 +8,9 @@ import Foundation
 ///
 /// Supports early-arrival uploads: if the binary POST arrives before the
 /// tool call registers the CID expectation, the file is buffered and
-/// returned immediately when `waitForUpload()` is called.
+/// returned immediately when `waitForUpload()` is called. An upload that
+/// fails before the expectation is registered is kept the same way and
+/// thrown when `waitForUpload()` is called.
 actor PendingUploadStore {
 
     struct Expectation {
@@ -22,8 +24,25 @@ actor PendingUploadStore {
         let arrivedAt: Date
     }
 
+    /// A failed upload whose tool call has not registered the CID yet.
+    struct EarlyFailure {
+        /// The error the upload ended with.
+        let error: Error
+        /// The time the failure arrived.
+        let failedAt: Date
+        /// The position of the failure among all early failures.
+        let order: Int
+    }
+
+    /// The most early failures the store keeps at once.
+    static let maxEarlyFailures = 64
+
     internal var expectations: [String: Expectation] = [:]  // cid → expectation
     internal var earlyArrivals: [String: EarlyArrival] = [:]  // cid → early arrival
+    /// The early failures by CID.
+    internal var earlyFailures: [String: EarlyFailure] = [:]
+    /// The number of early failures recorded so far.
+    private var failureCount = 0
 
     /// Register a pending upload. Returns when the file arrives or the caller cancels.
     func waitForUpload(
@@ -34,6 +53,9 @@ actor PendingUploadStore {
         // Check if the upload already arrived before the expectation was registered
         if let earlyArrival = earlyArrivals.removeValue(forKey: cid) {
             return earlyArrival.fileURL
+        }
+        if let earlyFailure = earlyFailures.removeValue(forKey: cid) {
+            throw earlyFailure.error
         }
 
         return try await withCheckedThrowingContinuation { continuation in
@@ -64,6 +86,7 @@ actor PendingUploadStore {
             if let replaced = earlyArrivals[cid], replaced.fileURL != fileURL {
                 try? FileManager.default.removeItem(at: replaced.fileURL)
             }
+            earlyFailures.removeValue(forKey: cid)
             earlyArrivals[cid] = EarlyArrival(fileURL: fileURL, arrivedAt: Date())
             return .earlyArrival
         }
@@ -72,8 +95,18 @@ actor PendingUploadStore {
     }
 
     /// Fail a pending upload (e.g. on cancellation or timeout).
+    /// If no expectation exists yet, keeps the failure for the later wait, dropping the oldest past the cap.
     func fail(cid: String, error: Error) {
         guard let expectation = expectations.removeValue(forKey: cid) else {
+            if let replaced = earlyArrivals.removeValue(forKey: cid) {
+                try? FileManager.default.removeItem(at: replaced.fileURL)
+            }
+            if earlyFailures.count >= Self.maxEarlyFailures,
+               let oldest = earlyFailures.min(by: { $0.value.order < $1.value.order }) {
+                earlyFailures.removeValue(forKey: oldest.key)
+            }
+            failureCount += 1
+            earlyFailures[cid] = EarlyFailure(error: error, failedAt: Date(), order: failureCount)
             return
         }
         expectation.continuation.resume(throwing: error)
@@ -98,7 +131,7 @@ actor PendingUploadStore {
         expectations[cid]?.progressToken
     }
 
-    /// Remove early arrivals older than the given interval and delete their temp files.
+    /// Remove early arrivals and early failures older than the given interval, and delete the arrivals' temp files.
     func expireEarlyArrivals(olderThan interval: TimeInterval = 60) {
         let now = Date()
         let expired = earlyArrivals.filter { now.timeIntervalSince($0.value.arrivedAt) > interval }
@@ -106,5 +139,6 @@ actor PendingUploadStore {
             earlyArrivals.removeValue(forKey: cid)
             try? FileManager.default.removeItem(at: arrival.fileURL)
         }
+        earlyFailures = earlyFailures.filter { now.timeIntervalSince($0.value.failedAt) <= interval }
     }
 }
