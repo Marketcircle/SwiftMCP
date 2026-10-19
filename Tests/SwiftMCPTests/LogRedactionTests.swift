@@ -37,7 +37,13 @@ struct LogRedactionTests {
         #expect(!HTTPLogger.showsBodies(for: "/oauth/token"))
         #expect(!HTTPLogger.showsBodies(for: "/u/login?state=abc"))
         #expect(!HTTPLogger.showsBodies(for: "/authorize?client_id=x"))
+        #expect(!HTTPLogger.showsBodies(for: "//oauth/token"))
+        #expect(!HTTPLogger.showsBodies(for: "/oauth"))
+        #expect(!HTTPLogger.showsBodies(for: "/u"))
+        #expect(!HTTPLogger.showsBodies(for: "/userinfo?scope=email"))
         #expect(HTTPLogger.showsBodies(for: "/mcp"))
         #expect(HTTPLogger.showsBodies(for: "/messages/123"))
+        #expect(HTTPLogger.showsBodies(for: "/oauthish"))
+        #expect(HTTPLogger.showsBodies(for: "/"))
     }
 }
