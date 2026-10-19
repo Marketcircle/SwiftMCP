@@ -48,7 +48,9 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     private var connectionLimit = Int.max
     /// The number of connections refused since the server last took one.
     private var refusedInARow = 0
-    /// The lock that guards ``openConnections``, ``connectionLimit``, and ``refusedInARow``.
+    /// The connections waiting for their next request, with the time each went idle.
+    private var idleConnections: [ObjectIdentifier: (channel: Channel, since: Date)] = [:]
+    /// The lock that guards ``openConnections``, ``connectionLimit``, ``refusedInARow``, and ``idleConnections``.
     private let connectionLock = NSLock()
 
     /// The HTTP router that dispatches incoming requests to route handlers.
@@ -70,6 +72,8 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     public var requestBodyDeadline: TimeInterval = 300
 
     /// The most connections the server keeps open at once, 256 by default and never more than half the open-file limit. Zero or less removes the cap. The server reads it in ``start()``.
+    ///
+    /// At the cap, a new connection closes the connection that has waited longest for its next request, or is refused when every connection is busy.
     public var maxConnections: Int = 256
 
     /// The most sessions the server keeps at once, 64 by default.
@@ -348,15 +352,20 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
 			.serverChannelOption(ChannelOptions.backlog, value: 256)
 			.serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
 			.childChannelInitializer {  channel in
-            let admission = self.admitConnection()
-            guard admission.admitted else {
-                if admission.logRefusal {
-                    self.logger.warning("Refusing new connections because the connection cap is reached")
+            switch self.admitConnection() {
+            case .refused(let logRefusal):
+                if logRefusal {
+                    self.logger.warning("Refusing new connections because the connection cap is reached and none is idle")
                 }
                 return channel.eventLoop.makeFailedFuture(ConnectionLimitError())
+            case .admitted(let evicted):
+                if let evicted {
+                    self.logger.debug("Closing the longest-idle connection to make room")
+                    evicted.close(promise: nil)
+                }
             }
             channel.closeFuture.whenComplete { _ in
-                self.releaseConnection()
+                self.releaseConnection(channel)
             }
             return channel.pipeline.configureHTTPServerPipeline().flatMap {
                 channel.pipeline.addHandler(HTTPLogger())
@@ -690,23 +699,53 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         return half
     }
 
-    /// Counts a new connection when it fits under the cap, and returns whether it fits and whether to log the refusal.
-    private func admitConnection() -> (admitted: Bool, logRefusal: Bool) {
+    /// The outcome of a new connection against the connection cap.
+    private enum Admission {
+        /// The connection is taken, closing the given idle connection to make room when one is named.
+        case admitted(evicting: Channel?)
+        /// The connection is refused, and the refusal is logged when the flag is set.
+        case refused(logRefusal: Bool)
+    }
+
+    /// Counts a new connection when it fits under the cap or an idle connection can make room for it.
+    private func admitConnection() -> Admission {
         connectionLock.withLock {
-            guard openConnections < connectionLimit else {
-                refusedInARow += 1
-                return (false, refusedInARow == 1)
+            if openConnections < connectionLimit {
+                openConnections += 1
+                refusedInARow = 0
+                return .admitted(evicting: nil)
             }
+            guard let oldest = idleConnections.min(by: { $0.value.since < $1.value.since }) else {
+                refusedInARow += 1
+                return .refused(logRefusal: refusedInARow == 1)
+            }
+            idleConnections.removeValue(forKey: oldest.key)
             openConnections += 1
             refusedInARow = 0
-            return (true, false)
+            return .admitted(evicting: oldest.value.channel)
         }
     }
 
-    /// Removes a closed connection from the count.
-    private func releaseConnection() {
+    /// Removes a closed connection from the count and from the idle list.
+    private func releaseConnection(_ channel: Channel) {
         connectionLock.withLock {
             openConnections -= 1
+            idleConnections.removeValue(forKey: ObjectIdentifier(channel))
+        }
+    }
+
+    /// Records that the connection waits for its next request, unless it has closed.
+    internal func markConnectionIdle(_ channel: Channel) {
+        guard channel.isActive else { return }
+        connectionLock.withLock {
+            idleConnections[ObjectIdentifier(channel)] = (channel, Date())
+        }
+    }
+
+    /// Records that the connection has a request in progress.
+    internal func markConnectionBusy(_ channel: Channel) {
+        connectionLock.withLock {
+            _ = idleConnections.removeValue(forKey: ObjectIdentifier(channel))
         }
     }
 

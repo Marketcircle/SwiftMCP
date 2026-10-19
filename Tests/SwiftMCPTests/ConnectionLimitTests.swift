@@ -33,8 +33,8 @@ struct ConnectionLimitTests {
     }
     #endif
 
-    /// Checks that a connection past the cap closes without an answer, and that a freed slot takes a new one.
-    @Test func connectionPastTheCapIsClosed() async throws {
+    /// Checks that a new connection at the cap closes the longest-idle connection and is answered.
+    @Test func idleConnectionMakesRoom() async throws {
         #if canImport(FoundationNetworking)
         // The test does not run on Linux.
         return
@@ -45,27 +45,51 @@ struct ConnectionLimitTests {
         defer { Task { try? await transport.stop() } }
 
         let first = connectSocket(port: transport.port)
+        defer { close(first) }
+        #expect(answerLength(on: first) > 0)
+        try await Task.sleep(for: .milliseconds(50))
         let second = connectSocket(port: transport.port)
         defer { close(second) }
-        #expect(answerLength(on: first) > 0)
         #expect(answerLength(on: second) > 0)
 
         let third = connectSocket(port: transport.port)
-        #expect(answerLength(on: third) == 0)
-        close(third)
+        defer { close(third) }
+        #expect(answerLength(on: third) > 0)
 
-        close(first)
-        var fourthAnswer = 0
-        let deadline = Date().addingTimeInterval(2)
-        while fourthAnswer <= 0, Date() < deadline {
-            let fourth = connectSocket(port: transport.port)
-            fourthAnswer = answerLength(on: fourth)
-            close(fourth)
-            if fourthAnswer <= 0 {
-                try await Task.sleep(for: .milliseconds(50))
-            }
+        var buffer = [UInt8](repeating: 0, count: 64)
+        #expect(recv(first, &buffer, buffer.count, 0) <= 0)
+        #expect(answerLength(on: second) > 0)
+        #endif
+    }
+
+    /// Checks that a new connection at the cap is refused when every connection has a request in progress.
+    @Test func busyConnectionsAreNotEvicted() async throws {
+        #if canImport(FoundationNetworking)
+        // The test does not run on Linux.
+        return
+        #else
+        let transport = HTTPSSETransport(server: Calculator(), host: "127.0.0.1", port: 0)
+        transport.maxConnections = 2
+        try await transport.start()
+        defer { Task { try? await transport.stop() } }
+
+        let head = "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nAccept: application/json\r\nTransfer-Encoding: chunked\r\n\r\n1\r\n{\r\n"
+        let first = connectSocket(port: transport.port)
+        defer { close(first) }
+        let second = connectSocket(port: transport.port)
+        defer { close(second) }
+        for fd in [first, second] {
+            _ = head.withCString { send(fd, $0, strlen($0), 0) }
         }
-        #expect(fourthAnswer > 0)
+        try await Task.sleep(for: .milliseconds(100))
+
+        let third = connectSocket(port: transport.port)
+        defer { close(third) }
+        #expect(answerLength(on: third) == 0)
+
+        _ = "0\r\n\r\n".withCString { send(first, $0, strlen($0), 0) }
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        #expect(recv(first, &buffer, buffer.count, 0) > 0)
         #endif
     }
 }
