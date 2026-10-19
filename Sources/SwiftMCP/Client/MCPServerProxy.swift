@@ -386,7 +386,9 @@ public final actor MCPServerProxy: Sendable {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        let (responseData, response) = try await URLSession.shared.data(for: request)
+        let session = URLSession.sameOrigin()
+        defer { session.finishTasksAndInvalidate() }
+        let (responseData, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               (200...201).contains(httpResponse.statusCode) else {
@@ -603,7 +605,8 @@ public final actor MCPServerProxy: Sendable {
             guard let messageId = messageId else {
                 throw MCPServerProxyError.communicationError("Message must have an ID")
             }
-            let session = URLSession(configuration: .default)
+            let session = URLSession.sameOrigin()
+            defer { session.finishTasksAndInvalidate() }
             var urlRequest = URLRequest(url: endpointURL)
             urlRequest.httpMethod = "POST"
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -898,8 +901,8 @@ public final actor MCPServerProxy: Sendable {
         guard let endpointURL = endpointURL else { return }
         guard case .sse(let sseConfig) = config else { return }
         let response = JSONRPCMessage.response(id: request.id, result: [:])
-        let sessionConfig = URLSessionConfiguration.default
-        let session = URLSession(configuration: sessionConfig)
+        let session = URLSession.sameOrigin()
+        defer { session.finishTasksAndInvalidate() }
         var urlRequest = URLRequest(url: endpointURL)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1338,13 +1341,14 @@ public final actor MCPServerProxy: Sendable {
         sessionConfig.timeoutIntervalForRequest = .infinity
         sessionConfig.timeoutIntervalForResource = .infinity
 
-        let session = URLSession(configuration: sessionConfig)
+        let session = URLSession.sameOrigin(configuration: sessionConfig)
         var request = URLRequest(url: sseConfig.url)
         request.httpMethod = "GET"
         applyConfiguredSSEHeaders(&request, sseConfig: sseConfig)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
         streamTask = Task {
+            defer { session.finishTasksAndInvalidate() }
             do {
                 let (asyncBytes, response) = try await session.bytes(for: request)
                 self.handleSSEResponse(response, sseConfig: sseConfig, isStreamableMCP: isStreamableMCP)
