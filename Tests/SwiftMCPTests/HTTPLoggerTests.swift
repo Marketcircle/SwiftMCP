@@ -8,7 +8,7 @@ import Testing
 /// Tests how the HTTP logger tracks stream connections across requests.
 @Suite("HTTP logger")
 struct HTTPLoggerTests {
-    /// Checks that a refused stream request leaves later requests on the same connection off the stream branch.
+    /// Checks that a refused stream request does not make later requests look like a stream.
     @Test func refusedStreamRequestDoesNotStick() throws {
         let logger = HTTPLogger()
         let channel = EmbeddedChannel(handler: logger)

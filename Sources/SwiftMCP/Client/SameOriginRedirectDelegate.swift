@@ -14,7 +14,7 @@ final class SameOriginRedirectDelegate: NSObject, URLSessionTaskDelegate, @unche
         return target.hasSameOrigin(as: original)
     }
 
-    /// Follows the redirect on the original request's origin, and delivers the redirect response otherwise.
+    /// Follows a redirect only when it stays on the original request's origin.
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
         completionHandler(Self.allowsRedirect(from: task.originalRequest?.url, to: request.url) ? request : nil)
     }

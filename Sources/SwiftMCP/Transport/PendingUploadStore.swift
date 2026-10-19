@@ -95,7 +95,7 @@ actor PendingUploadStore {
     }
 
     /// Fail a pending upload (e.g. on cancellation or timeout).
-    /// If no expectation exists yet, keeps the failure for the later wait, dropping the oldest past the cap.
+    /// A failure with no expectation yet waits for the tool call, within the cap.
     func fail(cid: String, error: Error) {
         guard let expectation = expectations.removeValue(forKey: cid) else {
             if let replaced = earlyArrivals.removeValue(forKey: cid) {
@@ -131,7 +131,7 @@ actor PendingUploadStore {
         expectations[cid]?.progressToken
     }
 
-    /// Remove early arrivals and early failures older than the given interval, and delete the arrivals' temp files.
+    /// Removes early arrivals and failures older than the given interval, deleting the arrivals' files.
     func expireEarlyArrivals(olderThan interval: TimeInterval = 60) {
         let now = Date()
         let expired = earlyArrivals.filter { now.timeIntervalSince($0.value.arrivedAt) > interval }

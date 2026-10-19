@@ -53,7 +53,7 @@ actor SessionManager {
     ///   - id: The unique identifier for the channel.
     ///   - transport: Transport associated with the session.
     func register(channel: Channel, id: UUID) async {
-        // The guard skips a channel that already closed, and one whose session is gone.
+        // The guard skips a closed channel and a missing session.
         guard channel.isActive, let session = sessions[id] else { return }
 
         await session.setChannel(channel)
