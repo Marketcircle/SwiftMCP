@@ -138,12 +138,14 @@ final class HTTPLogger: ChannelDuplexHandler, @unchecked Sendable {
         httpLogger.trace("\(log)")
     }
 
-    /// The path prefixes of the OAuth routes, whose bodies a log line never shows.
-    static let credentialPathPrefixes = ["/authorize", "/oauth/", "/userinfo", "/u/"]
+    /// The first path segments of the OAuth routes, whose bodies a log line never shows.
+    static let credentialRoots: Set<String> = ["authorize", "oauth", "userinfo", "u"]
 
-    /// Returns whether a log line may show the bodies of a request to the given URI.
+    /// Returns whether a log line may show the bodies of a request to the given URI, reading its path the way the router does.
     static func showsBodies(for uri: String) -> Bool {
-        !credentialPathPrefixes.contains { uri.hasPrefix($0) }
+        let path = uri.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first ?? ""
+        guard let root = path.split(separator: "/", omittingEmptySubsequences: true).first else { return true }
+        return !credentialRoots.contains(String(root))
     }
 
     /// The lowercase names of the headers whose values a log line masks.
