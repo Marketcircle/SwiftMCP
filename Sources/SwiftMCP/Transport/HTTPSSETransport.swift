@@ -38,8 +38,10 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     internal lazy var sessionManager = SessionManager(transport: self)
     internal let pendingUploadStore = PendingUploadStore()
     internal var keepAliveTimer: DispatchSourceTimer?
-    /// The lock that serializes every change to `keepAliveTimer`.
+    /// The lock that serializes every change to `keepAliveTimer` and `sessionSweepTimer`.
     private let keepAliveLock = NSLock()
+    /// The timer that removes idle sessions.
+    private var sessionSweepTimer: DispatchSourceTimer?
     /// The number of connections open now.
     private var openConnections = 0
     /// The connection cap in force, set from ``maxConnections`` and the open-file limit when the server starts.
@@ -72,6 +74,9 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
 
     /// The most sessions the server keeps at once, 64 by default.
     public var maxSessions: Int = 64
+
+    /// The seconds between sweeps for idle sessions, 60 by default. The server reads it in ``start()``.
+    public var sessionSweepInterval: TimeInterval = 60
 
     /// The seconds a session with no open stream may stay idle before removal, 30 minutes by default.
     public var sessionIdleTimeout: TimeInterval = 30 * 60
@@ -363,6 +368,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
             }
             logger.info("Server started and listening on \(host):\(self.port)")
             startKeepAliveTimer()
+            startSessionSweepTimer()
 
             self.channel?.closeFuture.whenComplete { [logger] result in
                 switch result {
@@ -400,6 +406,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     public func stop() async throws {
         logger.info("Stopping server...")
         stopKeepAliveTimer()
+        stopSessionSweepTimer()
 
         await sessionManager.removeAllSessions()
 
@@ -433,6 +440,31 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         logger.trace("Stopped keep-alive timer")
     }
 
+    /// Starts the idle session timer at ``sessionSweepInterval``, replacing any running one.
+    private func startSessionSweepTimer() {
+        let interval = sessionSweepInterval
+        guard interval > 0 else { return }
+        keepAliveLock.withLock {
+            sessionSweepTimer?.cancel()
+            let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
+            timer.schedule(deadline: .now() + interval, repeating: interval)
+            timer.setEventHandler { [weak self] in
+                guard let self else { return }
+                Task { await self.sessionManager.removeIdleSessions(olderThan: self.sessionIdleTimeout) }
+            }
+            timer.resume()
+            sessionSweepTimer = timer
+        }
+    }
+
+    /// Stops the idle session timer.
+    private func stopSessionSweepTimer() {
+        keepAliveLock.withLock {
+            sessionSweepTimer?.cancel()
+            sessionSweepTimer = nil
+        }
+    }
+
     /// Starts a new keep-alive timer at `keepAliveInterval` while the caller holds `keepAliveLock`.
     private func restartKeepAliveTimerLocked() {
         keepAliveTimer?.cancel()
@@ -449,8 +481,6 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     internal func sendKeepAlive() {
         Task { [weak self] in
             guard let self = self else { return }
-
-            await self.sessionManager.removeIdleSessions(olderThan: self.sessionIdleTimeout)
 
             switch self.keepAliveMode {
                 case .none:
