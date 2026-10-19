@@ -49,8 +49,12 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// The number of connections refused since the server last took one.
     private var refusedInARow = 0
     /// The connections waiting for their next request, with the time each went idle.
-    private var idleConnections: [ObjectIdentifier: (channel: Channel, since: Date)] = [:]
-    /// The lock that guards ``openConnections``, ``connectionLimit``, ``refusedInARow``, and ``idleConnections``.
+    private var idleConnections: [ObjectIdentifier: (channel: Channel, since: NIODeadline)] = [:]
+    /// The connections closed to make room, until each close completes.
+    private var evictedConnections: Set<ObjectIdentifier> = []
+    /// The seconds a connection must sit idle before a new connection may close it, 5 by default.
+    internal var minimumIdleAge: TimeInterval = 5
+    /// The lock that guards ``openConnections``, ``connectionLimit``, ``refusedInARow``, ``idleConnections``, and ``evictedConnections``.
     private let connectionLock = NSLock()
 
     /// The HTTP router that dispatches incoming requests to route handlers.
@@ -73,7 +77,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
 
     /// The most connections the server keeps open at once, 256 by default and never more than half the open-file limit. Zero or less removes the cap. The server reads it in ``start()``.
     ///
-    /// At the cap, a new connection closes the longest-idle connection, or is refused when none is idle.
+    /// At the cap, a new connection closes the longest-idle connection that has waited at least 5 s, or is refused when there is none.
     public var maxConnections: Int = 256
 
     /// The most sessions the server keeps at once, 64 by default.
@@ -707,19 +711,21 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         case refused(logRefusal: Bool)
     }
 
-    /// Counts a new connection when it fits under the cap or an idle connection can make room for it.
+    /// Returns the admission of a new connection, counting it when it fits under the cap or an idle connection makes room.
     private func admitConnection() -> Admission {
-        connectionLock.withLock {
+        let cutoff = NIODeadline.now() - .nanoseconds(Int64(max(minimumIdleAge, 0) * 1_000_000_000))
+        return connectionLock.withLock {
             if openConnections < connectionLimit {
                 openConnections += 1
                 refusedInARow = 0
                 return .admitted(evicting: nil)
             }
-            guard let oldest = idleConnections.min(by: { $0.value.since < $1.value.since }) else {
+            guard let oldest = idleConnections.filter({ $0.value.since <= cutoff }).min(by: { $0.value.since < $1.value.since }) else {
                 refusedInARow += 1
                 return .refused(logRefusal: refusedInARow == 1)
             }
             idleConnections.removeValue(forKey: oldest.key)
+            evictedConnections.insert(oldest.key)
             openConnections += 1
             refusedInARow = 0
             return .admitted(evicting: oldest.value.channel)
@@ -731,6 +737,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
         connectionLock.withLock {
             openConnections -= 1
             idleConnections.removeValue(forKey: ObjectIdentifier(channel))
+            evictedConnections.remove(ObjectIdentifier(channel))
         }
     }
 
@@ -738,14 +745,16 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     internal func markConnectionIdle(_ channel: Channel) {
         guard channel.isActive else { return }
         connectionLock.withLock {
-            idleConnections[ObjectIdentifier(channel)] = (channel, Date())
+            let id = ObjectIdentifier(channel)
+            guard !evictedConnections.contains(id) else { return }
+            idleConnections[id] = (channel, .now())
         }
     }
 
     /// Records that the connection has a request in progress.
     internal func markConnectionBusy(_ channel: Channel) {
         connectionLock.withLock {
-            _ = idleConnections.removeValue(forKey: ObjectIdentifier(channel))
+            idleConnections.removeValue(forKey: ObjectIdentifier(channel))
         }
     }
 

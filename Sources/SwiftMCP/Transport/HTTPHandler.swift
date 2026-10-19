@@ -28,8 +28,8 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
     private var requestCount = 0
     /// The number of the last request whose response has started.
     private var answeredCount = 0
-    /// The number of the last request whose response has been written in full.
-    private var respondedCount = 0
+    /// The number of responses that have started and not yet been written in full.
+    private var openResponses = 0
     private let transport: HTTPSSETransport
     let id = UUID()
 
@@ -45,6 +45,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
     func handlerAdded(context: ChannelHandlerContext) {
         if context.channel.isActive {
             restartReadTimer(context: context)
+            transport.markConnectionIdle(context.channel)
         }
     }
 
@@ -138,9 +139,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
         case (.end, .streaming(_, let continuation, _)):
             defer {
                 requestState = .idle
-                if respondedCount == requestCount {
-                    transport.markConnectionIdle(context.channel)
-                }
+                markIdleIfWaiting(context.channel)
             }
             cancelRequestTimers()
             continuation.finish()
@@ -174,7 +173,7 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
               let routeMatch = transport.router.match(method: method, path: path) else {
             if claimResponse(for: requestNumber) {
                 sendResponse(channel: channel, status: .notFound)
-                respondedCount = requestNumber
+                openResponses -= 1
             }
             return
         }
@@ -282,18 +281,23 @@ final class HTTPHandler: NSObject, ChannelInboundHandler, Identifiable, @uncheck
         bodyDeadline = schedule(after: transport.requestBodyDeadline, context: context)
     }
 
-    /// Records a written response and marks the connection idle when no request is in progress.
+    /// Records a written response and marks the connection idle when nothing is in progress.
     private func finishResponse(for request: Int, on channel: Channel) {
-        respondedCount = max(respondedCount, request)
-        if requestCount == request, case .idle = requestState {
-            transport.markConnectionIdle(channel)
-        }
+        openResponses -= 1
+        markIdleIfWaiting(channel)
+    }
+
+    /// Marks the connection idle when every request has an answer, no response is still being written, and no request is being read.
+    private func markIdleIfWaiting(_ channel: Channel) {
+        guard openResponses == 0, answeredCount == requestCount, case .idle = requestState else { return }
+        transport.markConnectionIdle(channel)
     }
 
     /// Marks the given request as answered and returns whether no response had started for it yet.
     private func claimResponse(for request: Int) -> Bool {
         guard answeredCount < request else { return false }
         answeredCount = request
+        openResponses += 1
         return true
     }
 
