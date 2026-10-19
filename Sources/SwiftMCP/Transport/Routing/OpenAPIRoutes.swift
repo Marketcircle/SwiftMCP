@@ -115,9 +115,17 @@ extension HTTPSSETransport {
 			return refusal
 		}
 
-		if case .unauthorized(let message) = await authorize(token, sessionID: sessionID) {
+		switch await authorize(token, sessionID: sessionID) {
+		case .unauthorized(let message):
 			let err = JSONRPCMessage.errorResponse(id: nil, error: .init(code: -32000, message: "Unauthorized: \(message)"))
 			return .json(err, status: .unauthorized)
+		case .jweNotSupported(let message):
+			let err = JSONRPCMessage.errorResponse(id: nil, error: .init(code: -32000, message: message))
+			return .json(err, status: .forbidden)
+		case .tooManySessions:
+			return RouteResponse(status: .serviceUnavailable)
+		case .authorized:
+			break
 		}
 
 		guard let body = request.body else {

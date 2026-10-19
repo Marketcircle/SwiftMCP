@@ -77,4 +77,15 @@ struct PendingUploadStoreTests {
         #expect(await store.earlyFailures["file-0"] == nil)
         #expect(await store.earlyFailures["file-\(PendingUploadStore.maxEarlyFailures)"] != nil)
     }
+
+    /// Checks that a repeated failure for one CID evicts no other early failure.
+    @Test func repeatedFailureKeepsOtherFailures() async {
+        let store = PendingUploadStore()
+        for index in 0..<PendingUploadStore.maxEarlyFailures {
+            await store.fail(cid: "file-\(index)", error: UploadTooLargeError(limit: 1))
+        }
+        await store.fail(cid: "file-1", error: UploadTooLargeError(limit: 2))
+        #expect(await store.earlyFailures.count == PendingUploadStore.maxEarlyFailures)
+        #expect(await store.earlyFailures["file-0"] != nil)
+    }
 }

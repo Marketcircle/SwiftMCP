@@ -41,7 +41,6 @@ actor SessionManager {
 
         guard sessions.count < limit else { return nil }
         let session = Session(id: id)
-        // The slot is taken before the first suspension point.
         sessions[id] = session
         await session.setTransport(transport)
         return session
@@ -51,7 +50,6 @@ actor SessionManager {
     /// - Parameters:
     ///   - channel: The channel to register.
     ///   - id: The unique identifier for the channel.
-    ///   - transport: Transport associated with the session.
     func register(channel: Channel, id: UUID) async {
         // The guard skips a closed channel and a missing session.
         guard channel.isActive, let session = sessions[id] else { return }
@@ -62,12 +60,11 @@ actor SessionManager {
             await session.setTransport(transport)
         }
 
-        // The second guard catches a channel that closed during the awaits above.
-        guard channel.isActive else {
+        // The second guard catches a channel that closed, or a session removed, during the awaits above.
+        guard channel.isActive, sessions[id] === session else {
             await session.setChannel(nil)
             return
         }
-        sessions[id] = session
     }
 
     /// Remove an SSE channel.

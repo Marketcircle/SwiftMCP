@@ -101,7 +101,7 @@ actor PendingUploadStore {
             if let replaced = earlyArrivals.removeValue(forKey: cid) {
                 try? FileManager.default.removeItem(at: replaced.fileURL)
             }
-            if earlyFailures.count >= Self.maxEarlyFailures,
+            if earlyFailures[cid] == nil, earlyFailures.count >= Self.maxEarlyFailures,
                let oldest = earlyFailures.min(by: { $0.value.order < $1.value.order }) {
                 earlyFailures.removeValue(forKey: oldest.key)
             }
