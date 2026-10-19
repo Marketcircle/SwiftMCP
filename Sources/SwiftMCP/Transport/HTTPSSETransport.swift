@@ -75,7 +75,7 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// The most sessions the server keeps at once, 64 by default.
     public var maxSessions: Int = 64
 
-    /// The seconds between sweeps for idle sessions, 60 by default. The server reads it in ``start()``.
+    /// The seconds between sweeps for idle sessions, 60 by default. The server reads it in ``start()``, and zero or less turns the sweep off.
     public var sessionSweepInterval: TimeInterval = 60
 
     /// The seconds a session with no open stream may stay idle before removal, 30 minutes by default.
@@ -578,7 +578,10 @@ public final class HTTPSSETransport: Transport, @unchecked Sendable {
     /// Send a message to a specific client.
     func sendSSE(_ message: SSEMessage, to sessionID: UUID) {
         Task {
-            guard let session = await sessionManager.existingSession(id: sessionID) else { return }
+            guard let session = await sessionManager.existingSession(id: sessionID) else {
+                logger.warning("Dropped an SSE message for unknown session \(sessionID)")
+                return
+            }
             await session.sendSSE(message)
         }
     }

@@ -251,6 +251,16 @@ extension HTTPSSETransport {
 			proxyRequest.httpBody = requestBody
 		}
 
+		if request.uri.hasPrefix("/oauth/token") {
+			var hasSession = false
+			if let header = request.sessionID, let id = UUID(uuidString: header) {
+				hasSession = await sessionManager.existingSession(id: id) != nil
+			}
+			if !hasSession, let refusal = await sessionLimitResponse() {
+				return refusal
+			}
+		}
+
 		do {
 			let sessionConfig = URLSessionConfiguration.default
 			let delegate = NoRedirectDelegate()
@@ -282,7 +292,7 @@ extension HTTPSSETransport {
 					let expiresIn = tokenResponse.expiresIn ?? Self.defaultAccessTokenLifetime
 
 					guard let session = await sessionManager.session(id: sessionUUID, limit: maxSessions) else {
-						return RouteResponse(status: .serviceUnavailable, body: Data("Too many sessions.".utf8))
+						return RouteResponse(status: .serviceUnavailable)
 					}
 					await session.work { s in
 						await s.setAccessToken(tokenResponse.accessToken)
