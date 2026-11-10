@@ -13,6 +13,9 @@ import SwiftSyntaxMacros
 
 /// Implementation of the MCPAppIntentTool macro.
 public struct MCPAppIntentToolMacro: MemberMacro, ExtensionMacro {
+    /// The hint argument labels, in the order `MCPToolAnnotations` takes them.
+    private static let hintLabels = ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"]
+
     public static func expansion(
         of node: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
@@ -32,6 +35,7 @@ public struct MCPAppIntentToolMacro: MemberMacro, ExtensionMacro {
         var descriptionOverrideArg = "nil"
         var docDescriptionArg = "nil"
         var isConsequentialArg = "true"
+        var hintValues: [String: String] = [:]
 
         if let arguments = node.arguments?.as(LabeledExprListSyntax.self) {
             for argument in arguments {
@@ -50,9 +54,20 @@ public struct MCPAppIntentToolMacro: MemberMacro, ExtensionMacro {
                 } else if argument.label?.text == "isConsequential",
                           let boolLiteral = argument.expression.as(BooleanLiteralExprSyntax.self) {
                     isConsequentialArg = boolLiteral.literal.text
+                } else if let label = argument.label?.text,
+                          hintLabels.contains(label),
+                          let boolLiteral = argument.expression.as(BooleanLiteralExprSyntax.self) {
+                    hintValues[label] = boolLiteral.literal.text
                 }
             }
         }
+
+        let hintArguments = hintLabels.compactMap { label in
+            hintValues[label].map { "\(label): \($0)" }
+        }
+        let annotationsArg = hintArguments.isEmpty
+            ? "nil"
+            : "MCPToolAnnotations(\(hintArguments.joined(separator: ", ")))"
 
         if !documentation.description.isEmpty {
             docDescriptionArg = "\"\(documentation.description.escapedForSwiftString)\""
@@ -83,7 +98,8 @@ public static let mcpToolMetadata: MCPToolMetadata = {
       returnTypeDescription: nil,
       isAsync: true,
       isThrowing: true,
-      isConsequential: \(isConsequentialArg)
+      isConsequential: \(isConsequentialArg),
+      annotations: \(annotationsArg)
    )
 }()
 """
