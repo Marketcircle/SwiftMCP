@@ -220,6 +220,16 @@ func testMCPToolAnnotationsRoundTrip() throws {
     #expect(decoded.hints == original.hints)
 }
 
+@Test("MCPToolAnnotations writes the MCP hint names")
+func testMCPToolAnnotationsWireKeys() throws {
+    let annotations = MCPToolAnnotations(readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false)
+
+    let data = try JSONEncoder().encode(annotations)
+    let decoded = try JSONDecoder().decode([String: Bool].self, from: data)
+
+    #expect(decoded == ["readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false])
+}
+
 @Test("MCPToolAnnotations encodes hints set to false")
 func testMCPToolAnnotationsEncodesFalse() throws {
     let annotations = MCPToolAnnotations(readOnlyHint: true, openWorldHint: false)
