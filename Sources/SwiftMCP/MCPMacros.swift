@@ -73,10 +73,10 @@ public enum MCPToolNaming {
 ///   - description: Optional override for the function's documentation description
 ///   - hints: OptionSet of tool behavior hints (preferred API)
 ///   - isConsequential: Whether the function's actions are consequential (defaults to true, deprecated - use hints instead)
-///   - readOnlyHint: If true, the tool does not modify its environment (deprecated - use hints: [.readOnly])
-///   - destructiveHint: If true (and readOnlyHint is false), tool may perform destructive updates (deprecated - use hints: [.destructive])
-///   - idempotentHint: If true, calling multiple times with same args has no additional effect (deprecated - use hints: [.idempotent])
-///   - openWorldHint: If true, tool may interact with external entities (deprecated - use hints: [.openWorld])
+///   - readOnlyHint: If true, the tool does not modify its environment. False sends the hint as false.
+///   - destructiveHint: If true (and readOnlyHint is false), tool may perform destructive updates. False sends the hint as false.
+///   - idempotentHint: If true, calling multiple times with same args has no additional effect. False sends the hint as false.
+///   - openWorldHint: If true, tool may interact with external entities. False sends the hint as false.
 @attached(peer, names: prefixed(__mcpMetadata_), prefixed(__mcpCall_))
 public macro MCPTool(
     name: String? = nil,

@@ -234,7 +234,7 @@ nonisolated private let __mcpMetadata_\(functionName) = MCPToolMetadata(
 
     /// Builds the annotations argument string for MCPToolMetadata initialization
     /// Returns "nil" if no hints are provided, otherwise returns a MCPToolAnnotations initialization
-    /// Supports both the new OptionSet API (hints: [.readOnly]) and legacy Bool? parameters
+    /// Supports both the OptionSet API (hints: [.readOnly]) and the Bool? parameters
     private static func buildAnnotationsArg(
         hintsFromOptionSet: [String],
         readOnlyHint: String?,
@@ -242,31 +242,18 @@ nonisolated private let __mcpMetadata_\(functionName) = MCPToolMetadata(
         idempotentHint: String?,
         openWorldHint: String?
     ) -> String {
-        // Collect all hints - start with OptionSet hints
-        var allHints = Set(hintsFromOptionSet)
-
-        // Add hints from legacy Bool? parameters (merge with OptionSet hints)
-        if readOnlyHint == "true" {
-            allHints.insert(".readOnly")
+        let hints = [
+            ("readOnlyHint", ".readOnly", readOnlyHint),
+            ("destructiveHint", ".destructive", destructiveHint),
+            ("idempotentHint", ".idempotent", idempotentHint),
+            ("openWorldHint", ".openWorld", openWorldHint),
+        ]
+        let arguments = hints.compactMap { label, option, value -> String? in
+            // An OptionSet hint wins over its Bool? parameter.
+            let resolved = hintsFromOptionSet.contains(option) ? "true" : value
+            return resolved.map { "\(label): \($0)" }
         }
-        if destructiveHint == "true" {
-            allHints.insert(".destructive")
-        }
-        if idempotentHint == "true" {
-            allHints.insert(".idempotent")
-        }
-        if openWorldHint == "true" {
-            allHints.insert(".openWorld")
-        }
-
-        // If no hints, return nil
-        if allHints.isEmpty {
-            return "nil"
-        }
-
-        // Sort for consistent output and build the MCPToolAnnotations initialization
-        let sortedHints = allHints.sorted()
-        return "MCPToolAnnotations(hints: [\(sortedHints.joined(separator: ", "))])"
+        return arguments.isEmpty ? "nil" : "MCPToolAnnotations(\(arguments.joined(separator: ", ")))"
     }
 
 }

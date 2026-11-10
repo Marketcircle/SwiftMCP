@@ -61,6 +61,18 @@ class HintsTestServer {
     func noHints() -> String {
         return "test"
     }
+
+    /// A read-only tool that stays inside the server's own data
+    @MCPTool(hints: [.readOnly], openWorldHint: false)
+    func closedSearch() -> String {
+        return "test"
+    }
+
+    /// A tool that sets the read-only hint both ways
+    @MCPTool(hints: [.readOnly], readOnlyHint: false)
+    func overriddenHint() -> String {
+        return "test"
+    }
 }
 
 // MARK: - MCPToolHints OptionSet Tests
@@ -214,6 +226,14 @@ func testMCPToolAnnotationsRoundTripsFalse() throws {
     #expect(reencoded == annotations)
 }
 
+@Test("MCPTool reads a hint set both ways as true")
+func testMCPToolTrueWinsOverFalse() throws {
+    let server = HintsTestServer()
+    let tool = try #require(server.mcpToolMetadata.convertedToTools().first { $0.name == "overriddenHint" })
+
+    #expect(tool.annotations?.readOnlyHint == true)
+}
+
 // MARK: - Tools/List Response Tests
 
 @Test("Tool annotations appear in tools metadata")
@@ -267,6 +287,16 @@ func testMultipleHintsPreserved() {
     #expect(allHintsTool.annotations?.hints.contains(.destructive) == true)
     #expect(allHintsTool.annotations?.hints.contains(.idempotent) == true)
     #expect(allHintsTool.annotations?.hints.contains(.openWorld) == true)
+}
+
+@Test("MCPTool keeps hints set to false")
+func testMCPToolKeepsFalseHints() throws {
+    let server = HintsTestServer()
+    let tool = try #require(server.mcpToolMetadata.convertedToTools().first { $0.name == "closedSearch" })
+
+    #expect(tool.annotations?.readOnlyHint == true)
+    #expect(tool.annotations?.openWorldHint == false)
+    #expect(tool.annotations?.destructiveHint == nil)
 }
 
 // MARK: - Computed isConsequential Tests
