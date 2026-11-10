@@ -181,6 +181,39 @@ func testMCPToolAnnotationsRoundTrip() throws {
     #expect(decoded.hints == original.hints)
 }
 
+@Test("MCPToolAnnotations encodes hints set to false")
+func testMCPToolAnnotationsEncodesFalse() throws {
+    let annotations = MCPToolAnnotations(readOnlyHint: true, openWorldHint: false)
+
+    let data = try JSONEncoder().encode(annotations)
+    let decoded = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+
+    #expect(decoded["readOnlyHint"] as? Bool == true)
+    #expect(decoded["openWorldHint"] as? Bool == false)
+    #expect(decoded["destructiveHint"] == nil)
+    #expect(decoded["idempotentHint"] == nil)
+}
+
+@Test("MCPToolAnnotations round-trips hints set to false")
+func testMCPToolAnnotationsRoundTripsFalse() throws {
+    let json = """
+    {
+        "readOnlyHint": false,
+        "openWorldHint": false
+    }
+    """
+    let annotations = try JSONDecoder().decode(MCPToolAnnotations.self, from: json.data(using: .utf8)!)
+
+    #expect(annotations.readOnlyHint == false)
+    #expect(annotations.openWorldHint == false)
+    #expect(annotations.destructiveHint == nil)
+    #expect(annotations.hints.isEmpty)
+    #expect(!annotations.isEmpty)
+
+    let reencoded = try JSONDecoder().decode(MCPToolAnnotations.self, from: JSONEncoder().encode(annotations))
+    #expect(reencoded == annotations)
+}
+
 // MARK: - Tools/List Response Tests
 
 @Test("Tool annotations appear in tools metadata")
