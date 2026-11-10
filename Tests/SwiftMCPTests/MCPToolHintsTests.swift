@@ -421,6 +421,28 @@ private struct HintedAppIntent: AppIntent {
     }
 }
 
+/// An AppIntent tool that declares write hints.
+@MCPAppIntentTool(description: "Writes items", readOnlyHint: false, openWorldHint: false)
+@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
+private struct WritingAppIntent: AppIntent {
+    static let title: LocalizedStringResource = "Writing Intent"
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        .result(value: "writing")
+    }
+}
+
+/// An AppIntent tool that is not consequential and declares only an open-world hint.
+@MCPAppIntentTool(description: "Stays quiet", isConsequential: false, openWorldHint: false)
+@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
+private struct QuietAppIntent: AppIntent {
+    static let title: LocalizedStringResource = "Quiet Intent"
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        .result(value: "quiet")
+    }
+}
+
 /// An AppIntent tool that declares no hints.
 @MCPAppIntentTool(description: "Declares no hints")
 @available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
@@ -461,5 +483,24 @@ func testAppIntentToolHintsEncoded() throws {
     #expect(annotations["readOnlyHint"] as? Bool == true)
     #expect(annotations["openWorldHint"] as? Bool == false)
     #expect(annotations.count == 2)
+}
+
+@Test("computedIsConsequential follows AppIntent read-only hints")
+func testAppIntentToolHintsDecideConsequential() {
+    guard #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) else {
+        return
+    }
+
+    #expect(HintedAppIntent.mcpToolMetadata.computedIsConsequential == false)
+    #expect(WritingAppIntent.mcpToolMetadata.computedIsConsequential == true)
+}
+
+@Test("computedIsConsequential keeps isConsequential without read-only or destructive hints")
+func testAppIntentToolOpenWorldHintKeepsConsequential() {
+    guard #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) else {
+        return
+    }
+
+    #expect(QuietAppIntent.mcpToolMetadata.computedIsConsequential == false)
 }
 #endif
