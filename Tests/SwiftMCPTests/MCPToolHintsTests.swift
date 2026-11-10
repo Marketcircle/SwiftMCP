@@ -8,6 +8,9 @@
 import Foundation
 import Testing
 @testable import SwiftMCP
+#if canImport(AppIntents)
+import AppIntents
+#endif
 
 // MARK: - Test Server with Tool Hints
 
@@ -198,7 +201,7 @@ func testMCPToolAnnotationsEncodesFalse() throws {
     let annotations = MCPToolAnnotations(readOnlyHint: true, openWorldHint: false)
 
     let data = try JSONEncoder().encode(annotations)
-    let decoded = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+    let decoded = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
     #expect(decoded["readOnlyHint"] as? Bool == true)
     #expect(decoded["openWorldHint"] as? Bool == false)
@@ -214,7 +217,7 @@ func testMCPToolAnnotationsRoundTripsFalse() throws {
         "openWorldHint": false
     }
     """
-    let annotations = try JSONDecoder().decode(MCPToolAnnotations.self, from: json.data(using: .utf8)!)
+    let annotations = try JSONDecoder().decode(MCPToolAnnotations.self, from: Data(json.utf8))
 
     #expect(annotations.readOnlyHint == false)
     #expect(annotations.openWorldHint == false)
@@ -224,6 +227,15 @@ func testMCPToolAnnotationsRoundTripsFalse() throws {
 
     let reencoded = try JSONDecoder().decode(MCPToolAnnotations.self, from: JSONEncoder().encode(annotations))
     #expect(reencoded == annotations)
+}
+
+@Test("MCPTool decodes hints set to false")
+func testMCPToolDecodesFalseHints() throws {
+    let json = #"{"name": "lookup", "inputSchema": {"type": "object"}, "annotations": {"openWorldHint": false}}"#
+    let tool = try JSONDecoder().decode(MCPTool.self, from: Data(json.utf8))
+
+    #expect(tool.annotations?.openWorldHint == false)
+    #expect(tool.annotations?.readOnlyHint == nil)
 }
 
 @Test("MCPTool reads a hint set both ways as true")
@@ -438,8 +450,6 @@ func testOpenAPIIsConsequentialCombined() {
 // MARK: - AppIntent Tool Hints
 
 #if canImport(AppIntents)
-import AppIntents
-
 /// An AppIntent tool that declares a true and a false hint.
 @MCPAppIntentTool(description: "Reads items", readOnlyHint: true, openWorldHint: false)
 @available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
@@ -484,12 +494,33 @@ private struct UnhintedAppIntent: AppIntent {
     }
 }
 
-@Test("MCPAppIntentTool passes its hints into the tool metadata")
-func testAppIntentToolHintsInMetadata() {
-    guard #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) else {
-        return
+/// Shortcuts that serve the hinted AppIntent tool.
+@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
+private struct HintedShortcutsProvider: AppShortcutsProvider, MCPAppShortcutsRepresentable {
+    static var appShortcuts: [AppShortcut] {
+        AppShortcut(
+            intent: HintedAppIntent(),
+            phrases: ["Run hinted intent in \(.applicationName)"],
+            shortTitle: "Hinted",
+            systemImageName: "eye"
+        )
     }
 
+    static var mcpAppShortcuts: [AppShortcut] {
+        [
+            AppShortcut(
+                intent: HintedAppIntent(),
+                phrases: ["Run hinted intent in \(.applicationName)"],
+                shortTitle: "Hinted",
+                systemImageName: "eye"
+            ),
+        ]
+    }
+}
+
+@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
+@Test("MCPAppIntentTool passes its hints into the tool metadata")
+func testAppIntentToolHintsInMetadata() {
     let annotations = HintedAppIntent.mcpToolMetadata.annotations
     #expect(annotations?.readOnlyHint == true)
     #expect(annotations?.openWorldHint == false)
@@ -499,13 +530,11 @@ func testAppIntentToolHintsInMetadata() {
     #expect(UnhintedAppIntent.mcpToolMetadata.annotations == nil)
 }
 
-@Test("MCPAppIntentTool hints reach the encoded tool")
-func testAppIntentToolHintsEncoded() throws {
-    guard #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) else {
-        return
-    }
-
-    let tool = try #require([HintedAppIntent.mcpToolMetadata].convertedToTools().first)
+@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
+@Test("MCPAppIntentTool hints reach the served tool list")
+func testAppIntentToolHintsServed() throws {
+    let tools = MCPAppIntentTools.toolMetadata(for: HintedShortcutsProvider.self).convertedToTools()
+    let tool = try #require(tools.first { $0.name == "hinted-intent" })
     let data = try JSONEncoder().encode(tool)
     let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
     let annotations = try #require(json["annotations"] as? [String: Any])
@@ -515,22 +544,16 @@ func testAppIntentToolHintsEncoded() throws {
     #expect(annotations.count == 2)
 }
 
+@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
 @Test("computedIsConsequential follows AppIntent read-only hints")
 func testAppIntentToolHintsDecideConsequential() {
-    guard #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) else {
-        return
-    }
-
     #expect(HintedAppIntent.mcpToolMetadata.computedIsConsequential == false)
     #expect(WritingAppIntent.mcpToolMetadata.computedIsConsequential == true)
 }
 
+@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
 @Test("computedIsConsequential keeps isConsequential without read-only or destructive hints")
 func testAppIntentToolOpenWorldHintKeepsConsequential() {
-    guard #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) else {
-        return
-    }
-
     #expect(QuietAppIntent.mcpToolMetadata.computedIsConsequential == false)
 }
 #endif
