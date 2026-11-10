@@ -71,16 +71,17 @@ public struct MCPToolMetadata: Sendable {
 
     /// Computed isConsequential based on annotations hints.
     /// Rule: consequential = NOT .readOnly OR .destructive
-    /// - If neither `readOnlyHint` nor `destructiveHint` is set, falls back to the legacy `isConsequential` property
-    /// - If `.readOnly` only, returns false (tool is not consequential)
-    /// - If `.destructive` is present (with or without `.readOnly`), returns true
+    /// - If `destructiveHint` is true (with or without `.readOnly`), returns true
+    /// - If `readOnlyHint` is set, returns its opposite
+    /// - Otherwise falls back to the `isConsequential` property
     public var computedIsConsequential: Bool {
-        guard let annotations,
-              annotations.readOnlyHint != nil || annotations.destructiveHint != nil else {
-            return isConsequential
+        if annotations?.destructiveHint == true {
+            return true
         }
-        // consequential = NOT readOnly OR destructive
-        return annotations.readOnlyHint != true || annotations.destructiveHint == true
+        if let readOnly = annotations?.readOnlyHint {
+            return !readOnly
+        }
+        return isConsequential
     }
 
     /// Enriches a dictionary of arguments with default values and throws if a required parameter is missing

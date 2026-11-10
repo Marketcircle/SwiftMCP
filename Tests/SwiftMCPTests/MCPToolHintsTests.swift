@@ -76,6 +76,24 @@ class HintsTestServer {
     func overriddenHint() -> String {
         return "test"
     }
+
+    /// A non-consequential open-world tool
+    @MCPTool(hints: [.openWorld], isConsequential: false)
+    func quietLookup() -> String {
+        return "test"
+    }
+
+    /// A non-consequential tool marked as not read-only
+    @MCPTool(isConsequential: false, readOnlyHint: false)
+    func quietWrite() -> String {
+        return "test"
+    }
+
+    /// A non-consequential tool marked as not destructive
+    @MCPTool(isConsequential: false, destructiveHint: false)
+    func quietAdd() -> String {
+        return "test"
+    }
 }
 
 // MARK: - MCPToolHints OptionSet Tests
@@ -379,7 +397,7 @@ func testComputedIsConsequentialOpenWorld() {
         return
     }
 
-    // readOnly = false, destructive = false, openWorld = true -> consequential = true
+    // No read-only or destructive hint, so the default isConsequential (true) applies.
     #expect(emailMeta.computedIsConsequential == true)
 }
 
@@ -393,8 +411,26 @@ func testComputedIsConsequentialIdempotent() {
         return
     }
 
-    // readOnly = false, destructive = false, idempotent = true -> consequential = true
+    // No read-only or destructive hint, so the default isConsequential (true) applies.
     #expect(updateMeta.computedIsConsequential == true)
+}
+
+@Test("computedIsConsequential keeps isConsequential without a deciding hint")
+func testComputedIsConsequentialKeepsExplicitFlag() throws {
+    let server = HintsTestServer()
+    let lookup = try #require(server.mcpToolMetadata.first { $0.name == "quietLookup" })
+    let add = try #require(server.mcpToolMetadata.first { $0.name == "quietAdd" })
+
+    #expect(lookup.computedIsConsequential == false)
+    #expect(add.computedIsConsequential == false)
+}
+
+@Test("computedIsConsequential follows readOnlyHint false over isConsequential")
+func testComputedIsConsequentialReadOnlyFalse() throws {
+    let server = HintsTestServer()
+    let write = try #require(server.mcpToolMetadata.first { $0.name == "quietWrite" })
+
+    #expect(write.computedIsConsequential == true)
 }
 
 // MARK: - OpenAPI isConsequential Tests
@@ -462,7 +498,7 @@ private struct HintedAppIntent: AppIntent {
 }
 
 /// An AppIntent tool that declares write hints.
-@MCPAppIntentTool(description: "Writes items", readOnlyHint: false, openWorldHint: false)
+@MCPAppIntentTool(description: "Writes items", isConsequential: false, readOnlyHint: false, openWorldHint: false)
 @available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
 private struct WritingAppIntent: AppIntent {
     static let title: LocalizedStringResource = "Writing Intent"
