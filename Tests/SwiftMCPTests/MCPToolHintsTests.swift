@@ -71,6 +71,12 @@ class HintsTestServer {
         return "test"
     }
 
+    /// A tool that only says it stays inside the server's own data
+    @MCPTool(openWorldHint: false)
+    func closedWrite() -> String {
+        return "test"
+    }
+
     /// A tool that sets the read-only hint both ways
     @MCPTool(hints: [.readOnly], readOnlyHint: false)
     func overriddenHint() -> String {
@@ -137,8 +143,8 @@ func testMCPToolAnnotationsFromHints() {
     #expect(annotations.openWorldHint == nil)
 }
 
-@Test("MCPToolAnnotations backwards compatible init")
-func testMCPToolAnnotationsBackwardsCompat() {
+@Test("MCPToolAnnotations init from optional Booleans")
+func testMCPToolAnnotationsFromOptionalBooleans() {
     let annotations = MCPToolAnnotations(
         readOnlyHint: true,
         destructiveHint: true
@@ -327,6 +333,15 @@ func testMCPToolKeepsFalseHints() throws {
     #expect(tool.annotations?.readOnlyHint == true)
     #expect(tool.annotations?.openWorldHint == false)
     #expect(tool.annotations?.destructiveHint == nil)
+}
+
+@Test("MCPTool keeps a hint set only to false")
+func testMCPToolKeepsFalseOnlyHint() throws {
+    let server = HintsTestServer()
+    let tool = try #require(server.mcpToolMetadata.convertedToTools().first { $0.name == "closedWrite" })
+
+    #expect(tool.annotations?.openWorldHint == false)
+    #expect(tool.annotations?.readOnlyHint == nil)
 }
 
 // MARK: - Computed isConsequential Tests
