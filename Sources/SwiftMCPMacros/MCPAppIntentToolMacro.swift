@@ -54,10 +54,13 @@ public struct MCPAppIntentToolMacro: MemberMacro, ExtensionMacro {
                 } else if argument.label?.text == "isConsequential",
                           let boolLiteral = argument.expression.as(BooleanLiteralExprSyntax.self) {
                     isConsequentialArg = boolLiteral.literal.text
-                } else if let label = argument.label?.text,
-                          hintLabels.contains(label),
-                          let boolLiteral = argument.expression.as(BooleanLiteralExprSyntax.self) {
-                    hintValues[label] = boolLiteral.literal.text
+                } else if let label = argument.label?.text, hintLabels.contains(label) {
+                    if let boolLiteral = argument.expression.as(BooleanLiteralExprSyntax.self) {
+                        hintValues[label] = boolLiteral.literal.text
+                    } else if !argument.expression.is(NilLiteralExprSyntax.self) {
+                        let message = MCPToolDiagnostic.hintRequiresBooleanLiteral(label: label)
+                        context.diagnose(Diagnostic(node: Syntax(argument.expression), message: message))
+                    }
                 }
             }
         }

@@ -125,6 +125,11 @@ public struct MCPToolMacro: PeerMacro {
                     idempotentHintArg = boolLiteral.literal.text
                 } else if argument.label?.text == "openWorldHint", let boolLiteral = argument.expression.as(BooleanLiteralExprSyntax.self) {
                     openWorldHintArg = boolLiteral.literal.text
+                } else if let label = argument.label?.text,
+                          ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"].contains(label),
+                          !argument.expression.is(NilLiteralExprSyntax.self) {
+                    let message = MCPToolDiagnostic.hintRequiresBooleanLiteral(label: label)
+                    context.diagnose(Diagnostic(node: Syntax(argument.expression), message: message))
                 }
             }
         }

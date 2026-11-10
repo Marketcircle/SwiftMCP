@@ -35,6 +35,9 @@ enum MCPToolDiagnostic: DiagnosticMessage {
     /// Error when an optional parameter is missing a default value
     case optionalParameterNeedsDefault(paramName: String, typeName: String)
 
+    /// Error when a tool hint argument is not a Boolean literal or nil
+    case hintRequiresBooleanLiteral(label: String)
+
     var message: String {
         switch self {
             case .onlyFunctions:
@@ -49,12 +52,14 @@ enum MCPToolDiagnostic: DiagnosticMessage {
                 return "Parameter '\(paramName)' has an unsupported closure type '\(typeName)'. Closures are not supported in MCP tools."
             case .optionalParameterNeedsDefault(let paramName, let typeName):
                 return "Optional parameter '\(paramName)' of type '\(typeName)' requires a default value (e.g. = nil)."
+            case .hintRequiresBooleanLiteral(let label):
+                return "'\(label)' must be true, false, or nil."
         }
     }
 
     var severity: DiagnosticSeverity {
         switch self {
-            case .onlyFunctions, .requiresAppIntentConformance, .invalidDefaultValueType, .closureTypeNotSupported, .optionalParameterNeedsDefault:
+            case .onlyFunctions, .requiresAppIntentConformance, .invalidDefaultValueType, .closureTypeNotSupported, .optionalParameterNeedsDefault, .hintRequiresBooleanLiteral:
                 return .error
             case .missingDescription:
                 return .warning
@@ -75,6 +80,8 @@ enum MCPToolDiagnostic: DiagnosticMessage {
                 return MessageID(domain: "SwiftMCP", id: "closureTypeNotSupported")
             case .optionalParameterNeedsDefault:
                 return MessageID(domain: "SwiftMCP", id: "optionalParameterNeedsDefault")
+            case .hintRequiresBooleanLiteral:
+                return MessageID(domain: "SwiftMCP", id: "hintRequiresBooleanLiteral")
         }
     }
 }
