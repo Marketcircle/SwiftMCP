@@ -72,11 +72,11 @@ public enum MCPToolNaming {
 ///   - title: Optional human-readable tool title.
 ///   - description: Optional override for the function's documentation description
 ///   - hints: OptionSet of tool behavior hints (preferred API)
-///   - isConsequential: Whether the function's actions are consequential (defaults to true, deprecated - use hints instead)
-///   - readOnlyHint: If true, the tool does not modify its environment. False sends the hint as false.
-///   - destructiveHint: If true (and readOnlyHint is false), tool may perform destructive updates. False sends the hint as false.
-///   - idempotentHint: If true, calling multiple times with same args has no additional effect. False sends the hint as false.
-///   - openWorldHint: If true, tool may interact with external entities. False sends the hint as false.
+///   - isConsequential: Whether the function's actions are consequential (defaults to true). A set read-only hint or a true destructive hint overrides it.
+///   - readOnlyHint: Whether the tool only reads its environment. Clients read nil as false.
+///   - destructiveHint: Whether the tool may perform destructive updates. Clients read nil as true.
+///   - idempotentHint: Whether repeat calls with the same arguments have no further effect. Clients read nil as false.
+///   - openWorldHint: Whether the tool may interact with external entities. Clients read nil as true.
 @attached(peer, names: prefixed(__mcpMetadata_), prefixed(__mcpCall_))
 public macro MCPTool(
     name: String? = nil,
@@ -106,7 +106,7 @@ public macro MCPTool(
 ///     from the resolved title, falling back to the Swift type name.
 ///   - title: Optional human-readable tool title override.
 ///   - description: Optional override for the tool's description.
-///   - isConsequential: Whether the tool's actions are consequential (defaults to true). A set `readOnlyHint` or `destructiveHint` overrides it.
+///   - isConsequential: Whether the tool's actions are consequential (defaults to true). A set `readOnlyHint` or a true `destructiveHint` overrides it.
 ///   - readOnlyHint: Whether the tool only reads its environment. Clients read nil as false.
 ///   - destructiveHint: Whether the tool may perform destructive updates. Clients read nil as true.
 ///   - idempotentHint: Whether repeat calls with the same arguments have no further effect. Clients read nil as false.

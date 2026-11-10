@@ -26,7 +26,8 @@ actor ExampleServer {
 
 Each ``MCPTool`` can be marked as consequential or not using the `isConsequential`
 parameter. This value is exported in the OpenAPI schema and allows clients to decide if
-calling the tool has side effects.
+calling the tool has side effects. A set read-only hint or a true destructive hint
+overrides it.
 
 ### Completions
 
