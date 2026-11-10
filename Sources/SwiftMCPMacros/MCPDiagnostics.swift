@@ -53,7 +53,7 @@ enum MCPToolDiagnostic: DiagnosticMessage {
             case .optionalParameterNeedsDefault(let paramName, let typeName):
                 return "Optional parameter '\(paramName)' of type '\(typeName)' requires a default value (e.g. = nil)."
             case .hintRequiresBooleanLiteral(let label):
-                return "'\(label)' must be true, false, or nil."
+                return "'\(label)' must be a literal true, false, or nil."
         }
     }
 
