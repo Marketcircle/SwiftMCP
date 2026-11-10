@@ -106,11 +106,11 @@ public macro MCPTool(
 ///     from the resolved title, falling back to the Swift type name.
 ///   - title: Optional human-readable tool title override.
 ///   - description: Optional override for the tool's description.
-///   - isConsequential: Whether the tool's actions are consequential (defaults to true).
-///   - readOnlyHint: Whether the tool only reads its environment. Nil omits the hint.
-///   - destructiveHint: Whether the tool may perform destructive updates. Nil omits the hint.
-///   - idempotentHint: Whether repeat calls with the same arguments have no further effect. Nil omits the hint.
-///   - openWorldHint: Whether the tool may interact with external entities. Nil omits the hint.
+///   - isConsequential: Whether the tool's actions are consequential (defaults to true). A set `readOnlyHint` or `destructiveHint` overrides it.
+///   - readOnlyHint: Whether the tool only reads its environment. Clients read nil as false.
+///   - destructiveHint: Whether the tool may perform destructive updates. Clients read nil as true.
+///   - idempotentHint: Whether repeat calls with the same arguments have no further effect. Clients read nil as false.
+///   - openWorldHint: Whether the tool may interact with external entities. Clients read nil as true.
 @attached(member, names: named(mcpToolMetadata), named(mcpPerform))
 @attached(extension, conformances: MCPAppIntentTool)
 public macro MCPAppIntentTool(
