@@ -107,9 +107,22 @@ public macro MCPTool(
 ///   - title: Optional human-readable tool title override.
 ///   - description: Optional override for the tool's description.
 ///   - isConsequential: Whether the tool's actions are consequential (defaults to true).
+///   - readOnlyHint: Whether the tool only reads its environment. Nil omits the hint.
+///   - destructiveHint: Whether the tool may perform destructive updates. Nil omits the hint.
+///   - idempotentHint: Whether repeat calls with the same arguments have no further effect. Nil omits the hint.
+///   - openWorldHint: Whether the tool may interact with external entities. Nil omits the hint.
 @attached(member, names: named(mcpToolMetadata), named(mcpPerform))
 @attached(extension, conformances: MCPAppIntentTool)
-public macro MCPAppIntentTool(name: String? = nil, title: String? = nil, description: String? = nil, isConsequential: Bool = true) = #externalMacro(module: "SwiftMCPMacros", type: "MCPAppIntentToolMacro")
+public macro MCPAppIntentTool(
+    name: String? = nil,
+    title: String? = nil,
+    description: String? = nil,
+    isConsequential: Bool = true,
+    readOnlyHint: Bool? = nil,
+    destructiveHint: Bool? = nil,
+    idempotentHint: Bool? = nil,
+    openWorldHint: Bool? = nil
+) = #externalMacro(module: "SwiftMCPMacros", type: "MCPAppIntentToolMacro")
 
 /// A macro that adds a `mcpTools` property to a class to aggregate function metadata.
 ///

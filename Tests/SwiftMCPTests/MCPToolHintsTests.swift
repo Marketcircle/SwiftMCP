@@ -404,3 +404,62 @@ func testOpenAPIIsConsequentialCombined() {
     // combined readOnly + destructive should have isConsequential = true
     #expect(operation.isConsequential == true)
 }
+
+// MARK: - AppIntent Tool Hints
+
+#if canImport(AppIntents)
+import AppIntents
+
+/// An AppIntent tool that declares a true and a false hint.
+@MCPAppIntentTool(description: "Reads items", readOnlyHint: true, openWorldHint: false)
+@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
+private struct HintedAppIntent: AppIntent {
+    static let title: LocalizedStringResource = "Hinted Intent"
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        .result(value: "hinted")
+    }
+}
+
+/// An AppIntent tool that declares no hints.
+@MCPAppIntentTool(description: "Declares no hints")
+@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
+private struct UnhintedAppIntent: AppIntent {
+    static let title: LocalizedStringResource = "Unhinted Intent"
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        .result(value: "unhinted")
+    }
+}
+
+@Test("MCPAppIntentTool passes its hints into the tool metadata")
+func testAppIntentToolHintsInMetadata() {
+    guard #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) else {
+        return
+    }
+
+    let annotations = HintedAppIntent.mcpToolMetadata.annotations
+    #expect(annotations?.readOnlyHint == true)
+    #expect(annotations?.openWorldHint == false)
+    #expect(annotations?.destructiveHint == nil)
+    #expect(annotations?.idempotentHint == nil)
+
+    #expect(UnhintedAppIntent.mcpToolMetadata.annotations == nil)
+}
+
+@Test("MCPAppIntentTool hints reach the encoded tool")
+func testAppIntentToolHintsEncoded() throws {
+    guard #available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *) else {
+        return
+    }
+
+    let tool = try #require([HintedAppIntent.mcpToolMetadata].convertedToTools().first)
+    let data = try JSONEncoder().encode(tool)
+    let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let annotations = try #require(json["annotations"] as? [String: Any])
+
+    #expect(annotations["readOnlyHint"] as? Bool == true)
+    #expect(annotations["openWorldHint"] as? Bool == false)
+    #expect(annotations.count == 2)
+}
+#endif
