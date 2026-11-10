@@ -412,7 +412,7 @@ func testComputedIsConsequentialOpenWorld() {
         return
     }
 
-    // No read-only or destructive hint, so the default isConsequential (true) applies.
+    // The tool sets no read-only or destructive hint, so the default isConsequential (true) applies.
     #expect(emailMeta.computedIsConsequential == true)
 }
 
@@ -426,7 +426,7 @@ func testComputedIsConsequentialIdempotent() {
         return
     }
 
-    // No read-only or destructive hint, so the default isConsequential (true) applies.
+    // The tool sets no read-only or destructive hint, so the default isConsequential (true) applies.
     #expect(updateMeta.computedIsConsequential == true)
 }
 
