@@ -100,6 +100,17 @@ class HintsTestServer {
     func quietAdd() -> String {
         return "test"
     }
+
+    /// A tool that uses a custom composite hint
+    @MCPTool(hints: [.lookup], openWorldHint: false)
+    func customLookup() -> String {
+        return "test"
+    }
+}
+
+extension MCPToolHints {
+    /// A custom hint for a read-only, idempotent tool.
+    static let lookup: MCPToolHints = [.readOnly, .idempotent]
 }
 
 // MARK: - MCPToolHints OptionSet Tests
@@ -352,6 +363,18 @@ func testMCPToolKeepsFalseHints() throws {
     #expect(tool.annotations?.readOnlyHint == true)
     #expect(tool.annotations?.openWorldHint == false)
     #expect(tool.annotations?.destructiveHint == nil)
+}
+
+@Test("MCPTool keeps custom hint members")
+func testMCPToolKeepsCustomHints() throws {
+    let server = HintsTestServer()
+    let metadata = try #require(server.mcpToolMetadata.first { $0.name == "customLookup" })
+    let tool = try #require(server.mcpToolMetadata.convertedToTools().first { $0.name == "customLookup" })
+
+    #expect(tool.annotations?.readOnlyHint == true)
+    #expect(tool.annotations?.idempotentHint == true)
+    #expect(tool.annotations?.openWorldHint == false)
+    #expect(metadata.computedIsConsequential == false)
 }
 
 @Test("MCPTool keeps a hint set only to false")

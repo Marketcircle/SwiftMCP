@@ -108,13 +108,8 @@ public struct MCPToolMacro: PeerMacro {
                     let stringValue = stringLiteral.segments.description
                     descriptionArg = "\"\(stringValue.escapedForSwiftString)\"" // Ensure proper escaping
                 } else if argument.label?.text == "hints", let arrayExpr = argument.expression.as(ArrayExprSyntax.self) {
-                    // Parse hints array: [.readOnly, .destructive]
-                    for element in arrayExpr.elements {
-                        if let memberAccess = element.expression.as(MemberAccessExprSyntax.self) {
-                            let hintName = memberAccess.declName.baseName.text
-                            hintsFromOptionSet.append(".\(hintName)")
-                        }
-                    }
+                    // The macro keeps each hint element as written.
+                    hintsFromOptionSet = arrayExpr.elements.map { $0.expression.trimmedDescription }
                 } else if argument.label?.text == "isConsequential", let boolLiteral = argument.expression.as(BooleanLiteralExprSyntax.self) {
                     isConsequentialArg = boolLiteral.literal.text
                 } else if argument.label?.text == "readOnlyHint", let boolLiteral = argument.expression.as(BooleanLiteralExprSyntax.self) {
@@ -247,17 +242,14 @@ nonisolated private let __mcpMetadata_\(functionName) = MCPToolMetadata(
         idempotentHint: String?,
         openWorldHint: String?
     ) -> String {
-        let hints = [
-            ("readOnlyHint", ".readOnly", readOnlyHint),
-            ("destructiveHint", ".destructive", destructiveHint),
-            ("idempotentHint", ".idempotent", idempotentHint),
-            ("openWorldHint", ".openWorld", openWorldHint),
+        var arguments = hintsFromOptionSet.isEmpty ? [] : ["hints: [\(hintsFromOptionSet.joined(separator: ", "))]"]
+        let flags = [
+            ("readOnlyHint", readOnlyHint),
+            ("destructiveHint", destructiveHint),
+            ("idempotentHint", idempotentHint),
+            ("openWorldHint", openWorldHint),
         ]
-        let arguments = hints.compactMap { label, option, value -> String? in
-            // An OptionSet hint wins over its Bool? parameter.
-            let resolved = hintsFromOptionSet.contains(option) ? "true" : value
-            return resolved.map { "\(label): \($0)" }
-        }
+        arguments += flags.compactMap { label, value in value.map { "\(label): \($0)" } }
         return arguments.isEmpty ? "nil" : "MCPToolAnnotations(\(arguments.joined(separator: ", ")))"
     }
 
