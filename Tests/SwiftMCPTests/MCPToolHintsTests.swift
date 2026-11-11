@@ -106,6 +106,12 @@ class HintsTestServer {
     func customLookup() -> String {
         return "test"
     }
+
+    /// A tool that passes a custom hint without an array
+    @MCPTool(hints: MCPToolHints.lookup)
+    func bareLookup() -> String {
+        return "test"
+    }
 }
 
 extension MCPToolHints {
@@ -375,6 +381,16 @@ func testMCPToolKeepsCustomHints() throws {
     #expect(tool.annotations?.idempotentHint == true)
     #expect(tool.annotations?.openWorldHint == false)
     #expect(metadata.computedIsConsequential == false)
+}
+
+@Test("MCPTool keeps a hints expression that is not an array")
+func testMCPToolKeepsBareHints() throws {
+    let server = HintsTestServer()
+    let tool = try #require(server.mcpToolMetadata.convertedToTools().first { $0.name == "bareLookup" })
+
+    #expect(tool.annotations?.readOnlyHint == true)
+    #expect(tool.annotations?.idempotentHint == true)
+    #expect(tool.annotations?.openWorldHint == nil)
 }
 
 @Test("MCPTool keeps a hint set only to false")

@@ -86,8 +86,8 @@ public struct MCPToolMacro: PeerMacro {
         var descriptionArg = "nil"
         var isConsequentialArg = "true"  // Default to true
 
-        // Hints from OptionSet API (preferred)
-        var hintsFromOptionSet: [String] = []
+        // Hints expression from OptionSet API (preferred)
+        var hintsArg: String? = nil
 
         // Annotation hint arguments from legacy Bool? API (nil by default)
         var readOnlyHintArg: String? = nil
@@ -107,9 +107,10 @@ public struct MCPToolMacro: PeerMacro {
                 } else if argument.label?.text == "description", let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self) {
                     let stringValue = stringLiteral.segments.description
                     descriptionArg = "\"\(stringValue.escapedForSwiftString)\"" // Ensure proper escaping
-                } else if argument.label?.text == "hints", let arrayExpr = argument.expression.as(ArrayExprSyntax.self) {
-                    // The macro keeps each hint element as written.
-                    hintsFromOptionSet = arrayExpr.elements.map { $0.expression.trimmedDescription }
+                } else if argument.label?.text == "hints" {
+                    // The macro keeps the hints expression as written and skips an empty array.
+                    let isEmptyArray = argument.expression.as(ArrayExprSyntax.self)?.elements.isEmpty == true
+                    hintsArg = isEmptyArray ? nil : argument.expression.trimmedDescription
                 } else if argument.label?.text == "isConsequential", let boolLiteral = argument.expression.as(BooleanLiteralExprSyntax.self) {
                     isConsequentialArg = boolLiteral.literal.text
                 } else if argument.label?.text == "readOnlyHint", let boolLiteral = argument.expression.as(BooleanLiteralExprSyntax.self) {
@@ -157,7 +158,7 @@ public struct MCPToolMacro: PeerMacro {
 
         // Build annotations argument string
         let annotationsArg = buildAnnotationsArg(
-            hintsFromOptionSet: hintsFromOptionSet,
+            hints: hintsArg,
             readOnlyHint: readOnlyHintArg,
             destructiveHint: destructiveHintArg,
             idempotentHint: idempotentHintArg,
@@ -236,13 +237,13 @@ nonisolated private let __mcpMetadata_\(functionName) = MCPToolMetadata(
     /// Returns "nil" if no hints are provided, otherwise returns a MCPToolAnnotations initialization
     /// Supports both the OptionSet API (hints: [.readOnly]) and the Bool? parameters
     private static func buildAnnotationsArg(
-        hintsFromOptionSet: [String],
+        hints: String?,
         readOnlyHint: String?,
         destructiveHint: String?,
         idempotentHint: String?,
         openWorldHint: String?
     ) -> String {
-        var arguments = hintsFromOptionSet.isEmpty ? [] : ["hints: [\(hintsFromOptionSet.joined(separator: ", "))]"]
+        var arguments = hints.map { ["hints: \($0)"] } ?? []
         let flags = [
             ("readOnlyHint", readOnlyHint),
             ("destructiveHint", destructiveHint),
