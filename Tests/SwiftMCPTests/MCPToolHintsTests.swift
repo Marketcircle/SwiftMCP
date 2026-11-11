@@ -143,6 +143,15 @@ func testMCPToolAnnotationsFromHints() {
     #expect(annotations.openWorldHint == nil)
 }
 
+@Test("MCPToolAnnotations merges hints with optional Booleans")
+func testMCPToolAnnotationsMergesHintsWithBooleans() {
+    let annotations = MCPToolAnnotations(hints: [.readOnly], readOnlyHint: false, openWorldHint: false)
+
+    #expect(annotations.readOnlyHint == true)
+    #expect(annotations.openWorldHint == false)
+    #expect(annotations.destructiveHint == nil)
+}
+
 @Test("MCPToolAnnotations init from optional Booleans")
 func testMCPToolAnnotationsFromOptionalBooleans() {
     let annotations = MCPToolAnnotations(

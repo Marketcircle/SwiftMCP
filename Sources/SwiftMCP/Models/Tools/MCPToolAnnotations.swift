@@ -34,13 +34,19 @@ public struct MCPToolAnnotations: Sendable, Equatable, Codable {
     /// A Boolean value indicating whether the tool may interact with external entities, or nil when unset.
     public let openWorldHint: Bool?
 
-    /// Creates annotations from an OptionSet of hints.
-    public init(hints: MCPToolHints) {
+    /// Creates annotations from an OptionSet of hints, with a Boolean for each hint the set leaves out.
+    public init(
+        hints: MCPToolHints,
+        readOnlyHint: Bool? = nil,
+        destructiveHint: Bool? = nil,
+        idempotentHint: Bool? = nil,
+        openWorldHint: Bool? = nil
+    ) {
         self.init(
-            readOnlyHint: hints.contains(.readOnly) ? true : nil,
-            destructiveHint: hints.contains(.destructive) ? true : nil,
-            idempotentHint: hints.contains(.idempotent) ? true : nil,
-            openWorldHint: hints.contains(.openWorld) ? true : nil
+            readOnlyHint: hints.contains(.readOnly) ? true : readOnlyHint,
+            destructiveHint: hints.contains(.destructive) ? true : destructiveHint,
+            idempotentHint: hints.contains(.idempotent) ? true : idempotentHint,
+            openWorldHint: hints.contains(.openWorld) ? true : openWorldHint
         )
     }
 
